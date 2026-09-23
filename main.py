@@ -128,6 +128,7 @@ async def sair(ctx):
 async def main():
     async with bot:
         await bot.load_extension("cogs.auto_response")
+        await bot.load_extension("cogs.status")
         await bot.load_extension("cogs.jogos")
         await bot.load_extension("cogs.niveis")
         await bot.load_extension("cogs.tickets")

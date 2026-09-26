@@ -1,4 +1,4 @@
-# ALT
+# ALT 
 
 > **The Discord bot behind Axolotl BR.**
 

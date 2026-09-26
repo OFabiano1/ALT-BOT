@@ -6,10 +6,10 @@ import sys
 
 from dotenv import load_dotenv
 import asyncio
-
 load_dotenv()
-TOKEN = os.getenv("TOKEN")
 
+TOKEN = os.getenv("TOKEN")
+    
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix=">", intents=intents)
 
@@ -120,7 +120,7 @@ async def sair(ctx):
     """Sai da call de voz."""
     vc = ctx.voice_client
     if vc is None:
-        await ctx.send("não estou em nenhuma call!")
+        await ctx.send("não estou em call")
         return
     await vc.disconnect()
     await ctx.send("saí da call! 👋")

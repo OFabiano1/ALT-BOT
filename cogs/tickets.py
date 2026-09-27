@@ -1,15 +1,32 @@
+import logging
+import os
+
 import discord
 from discord.ext import commands
 
-# ── Configure aqui ───────────────────────────────────────────
-MOD_ROLE_ID       = 994118849752481847
-TICKET_CHANNEL_ID = 1148417761987534918
+import brand
+
+log = logging.getLogger("alt.tickets")
+
+# ── Configure aqui ou no .env ────────────────────────────────
+MOD_ROLE_ID       = int(os.getenv("MOD_ROLE_ID", "0"))
+TICKET_CHANNEL_ID = int(os.getenv("TICKET_CHANNEL_ID", "0"))
+TICKET_BANNER_URL = os.getenv("TICKET_BANNER_URL", "")
 # ─────────────────────────────────────────────────────────────
+
+# 7 dias em minutos — o padrão do Discord, então o ticket não
+# archiva enquanto a conversa estiver ativa.
+AUTO_ARCHIVE = 10080
+
+
+def _ids_configurados() -> bool:
+    return bool(MOD_ROLE_ID and TICKET_CHANNEL_ID)
 
 
 async def criar_ticket(interaction: discord.Interaction, emoji: str, label: str):
     canal = interaction.channel
 
+    # Procura um ticket aberto do mesmo usuário antes de criar outro.
     for thread in canal.threads:
         if str(interaction.user.id) in thread.name and not thread.archived:
             await interaction.response.send_message(
@@ -26,6 +43,7 @@ async def criar_ticket(interaction: discord.Interaction, emoji: str, label: str)
             )
             return
 
+    # Reaproveita um ticket arquivado do mesmo usuário em vez de abrir outro.
     ticket = None
     async for thread in canal.archived_threads(private=True):
         if str(interaction.user.id) in thread.name:
@@ -36,19 +54,20 @@ async def criar_ticket(interaction: discord.Interaction, emoji: str, label: str)
 
     if ticket is not None:
         await ticket.edit(archived=False, locked=False)
-        await ticket.edit(name=nome_thread, auto_archive_duration=10080, invitable=False)
+        await ticket.edit(name=nome_thread, auto_archive_duration=AUTO_ARCHIVE, invitable=False)
     else:
         ticket = await canal.create_thread(
             name=nome_thread,
             type=discord.ChannelType.private_thread,
-            auto_archive_duration=10080,
+            auto_archive_duration=AUTO_ARCHIVE,
             invitable=False,
         )
 
-    cargo_mod = interaction.guild.get_role(MOD_ROLE_ID)
-    if cargo_mod:
-        for membro in cargo_mod.members:
-            await ticket.add_user(membro)
+    if MOD_ROLE_ID:
+        cargo_mod = interaction.guild.get_role(MOD_ROLE_ID)
+        if cargo_mod:
+            for membro in cargo_mod.members:
+                await ticket.add_user(membro)
 
     await interaction.response.send_message(
         ephemeral=True,
@@ -59,20 +78,21 @@ async def criar_ticket(interaction: discord.Interaction, emoji: str, label: str)
         title=f"{emoji} {label}",
         description=(
             f"{interaction.user.mention} ticket criado!\n\n"
-            "envie todas as informações possíveis sobre seu caso e aguarde até que um atendente responda.\n\n"
+            "envie todas as informações possíveis sobre seu caso e aguarde até que um "
+            "atendente responda.\n\n"
             "após a sua questão ser sanada, use `>fecharticket` para encerrar o atendimento."
         ),
-        color=0x8F00FF,
+        color=brand.PRIMARY,
     )
-    embed.set_footer(text="ALT • Sistema de Tickets")
+    embed.set_footer(text=f"ALT • Sistema de Tickets • {brand.FOOTER}")
     await ticket.send(embed=embed)
 
 
 class Dropdown(discord.ui.Select):
     def __init__(self):
         options = [
-            discord.SelectOption(value="ticket",   label="Ticket",    emoji="🎫"),
-            discord.SelectOption(value="denuncia", label="Denúncia",  emoji="🚨"),
+            discord.SelectOption(value="ticket",   label="Ticket",   emoji="🎫"),
+            discord.SelectOption(value="denuncia", label="Denúncia", emoji="🚨"),
         ]
         super().__init__(
             placeholder="selecione uma opção...",
@@ -101,13 +121,23 @@ class Tickets(commands.Cog, name="tickets"):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         bot.add_view(DropdownView())
+        if not _ids_configurados():
+            log.warning(
+                "MOD_ROLE_ID / TICKET_CHANNEL_ID nao definidos — "
+                ">setupticket e o preenchimento automatico de moderadores ficam inativos"
+            )
 
     # ── >setupticket ─────────────────────────────────────────
     @commands.command(name="setupticket")
     @commands.has_permissions(administrator=True)
     async def setup_ticket(self, ctx: commands.Context):
         """[Admin] Envia o embed com o dropdown de tickets."""
-        canal = ctx.guild.get_channel(TICKET_CHANNEL_ID)
+        if not TICKET_CHANNEL_ID:
+            await ctx.send("❌ `TICKET_CHANNEL_ID` não configurado!")
+            return
+
+        # get_channel() foi deprecado no discord.py 2.x.
+        canal = ctx.guild.get_channel_or_thread(TICKET_CHANNEL_ID)
         if canal is None:
             await ctx.send("❌ canal de tickets não encontrado!")
             return
@@ -115,15 +145,16 @@ class Tickets(commands.Cog, name="tickets"):
         embed = discord.Embed(
             title="Central de Ajuda",
             description=(
-                "Boas-vindas ào atendimento do Axolotl BR\n"
-                "Por aqui você pode reportar bugs de bots, realizar uma denúncia de outros membros, "
-                "parcerias (sorteios, boost e patrocínios) e adicionar bots."
+                "Boas-vindas ao atendimento do Axolotl BR\n"
+                "Por aqui você pode reportar bugs de bots, realizar uma denúncia de outros "
+                "membros, parcerias (sorteios, boost e patrocínios) e adicionar bots."
             ),
-            color=0x8F00FF,
+            color=brand.PRIMARY,
         )
-        embed.set_image(url="https://cdn.discordapp.com/attachments/1017344173843693628/1334656061831122965/image.png?ex=69b1f0d1&is=69b09f51&hm=4cd4046585305d5e82b90d47c6ce35878e116e0fe4f0866fa4ff4e0f277eeba1&")
+        if TICKET_BANNER_URL:
+            embed.set_image(url=TICKET_BANNER_URL)
         embed.set_footer(text=(
-            "© 2020 – 2026 Axoltol BR. Todos os direitos reservados.\n\n"
+            f"© 2020 – 2026 Axolotl BR. Todos os direitos reservados.\n\n"
             "Para dar início ao seu atendimento, selecione uma das opções abaixo."
         ))
 
@@ -138,10 +169,9 @@ class Tickets(commands.Cog, name="tickets"):
             await ctx.send("este comando só funciona dentro de um ticket!")
             return
 
-        cargo_mod = ctx.guild.get_role(MOD_ROLE_ID)
-        tem_permissao = (
-            str(ctx.author.id) in ctx.channel.name
-            or (cargo_mod and cargo_mod in ctx.author.roles)
+        cargo_mod = ctx.guild.get_role(MOD_ROLE_ID) if MOD_ROLE_ID else None
+        tem_permissao = str(ctx.author.id) in ctx.channel.name or (
+            cargo_mod is not None and cargo_mod in ctx.author.roles
         )
 
         if not tem_permissao:

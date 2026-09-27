@@ -1,14 +1,26 @@
+import logging
+import os
+
 import discord
 from discord.ext import commands
 
-GIF = "https://cdn.discordapp.com/attachments/1425980403319312496/1454089728159907981/penisapro.gif"
+log = logging.getLogger("alt.auto_response")
+
+# O link do CDN do Discord carrega assinatura `ex=`/`hm=` e expira,
+# virando 404 depois de um tempo. Configurar por env permite trocar sem
+# deploy. Vazio = repost desativado.
+REPOST_GIF = os.getenv("REPOST_GIF", "")
+REPOST_GIF = REPOST_GIF.strip()
+
 
 class AutoResponse(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        if not REPOST_GIF:
+            log.info("REPOST_GIF nao definido — repost automatico desativado")
 
     @commands.Cog.listener()
-    async def on_message(self, message):
+    async def on_message(self, message: discord.Message):
         # ignora mensagens do próprio bot
         if message.author == self.bot.user:
             return
@@ -18,8 +30,8 @@ class AutoResponse(commands.Cog):
             await message.channel.send("W")
 
         # repost do gif automaticamente
-        if GIF in message.content:
-            await message.channel.send(GIF)
+        if REPOST_GIF and REPOST_GIF in message.content:
+            await message.channel.send(REPOST_GIF)
 
 
 async def setup(bot):

@@ -1,0 +1,5 @@
+DISPLAY_NAME=ALT
+DESCRIPTION=ALT - The Discord bot powering the Axolotl BR community.
+MAIN=main.py
+MEMORY=512
+VERSION=recommended

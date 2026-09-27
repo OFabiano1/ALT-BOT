@@ -1,6 +1,11 @@
 .env
-__pycache__
+__pycache__/
+*.py[cod]
 .idea/
 data/
+.venv/
+venv/
+*.zip
+*.rar
 bot.log
 bot.log.err

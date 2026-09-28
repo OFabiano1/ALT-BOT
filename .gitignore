@@ -9,3 +9,4 @@ venv/
 *.rar
 bot.log
 bot.log.err
+AGENTS.md

@@ -71,32 +71,6 @@ código — quando expirarem, troque sem precisar fazer deploy.
 
 ---
 
-## Deploy (ShardCloud)
-
-`basic` — 512 MB de RAM, suficiente para o bot + web no mesmo processo.
-
-Arquivos necessários na raiz: `main.py`, `requirements.txt`, `.shardcloud`.
-
-> ⚠️ **Nunca inclua o `.env` no arquivo enviado.** Ele contém o token do
-> bot. No deploy, defina as variáveis de ambiente pelo painel da
-> ShardCloud. Compactar a pasta inteira como está sobe o token junto.
-
-Antes de compactar, remova: `__pycache__/`, `*.pyc`, `data/`, `.env`,
-`venv/`, `.idea/`.
-
-O `.shardcloud` precisa apontar `MAIN=main.py` em minúsculas — o
-container é Linux e diferencia maiúsculas de minúsculas.
-
-> **Publicação na Web** exige no mínimo 512 MB. Se for ligar o site /
-> dashboard, o servidor HTTP precisa escutar na **porta 80** (não em
-> `process.env.PORT`) e o `MEMORY` já precisa estar em 512 ou mais.
-
-O banco fica em `/app/data/alt.db` e persiste entre deploys. Backups
-automáticos só existem nos planos superiores — copie o arquivo
-periodicamente se os dados importarem.
-
----
-
 ## Estrutura
 
 ```

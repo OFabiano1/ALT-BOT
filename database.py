@@ -59,6 +59,13 @@ CREATE TABLE IF NOT EXISTS auras (
     aura_id TEXT NOT NULL,
     PRIMARY KEY (user_id, aura_id)
 );
+
+CREATE TABLE IF NOT EXISTS mudae_reminder (
+    user_id    INTEGER PRIMARY KEY,
+    channel_id INTEGER NOT NULL,
+    guild_id   INTEGER NOT NULL DEFAULT 0,
+    expires_at REAL NOT NULL
+);
 """
 
 
@@ -374,6 +381,35 @@ def buscar_colecao(user_id: int) -> list[tuple[str, int]]:
             (user_id,),
         ).fetchall()
     return [(r["axolotl_id"], r["qtd"]) for r in rows]
+
+
+# ── Mudae reminder ─────────────────────────────────────────
+def salvar_mudae(user_id: int, channel_id: int, guild_id: int, expires_at: float) -> None:
+    """Agenda/substitui o reminder. Um ativo por usuário."""
+    with _lock, _conectar() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute(
+            "INSERT INTO mudae_reminder (user_id, channel_id, guild_id, expires_at) "
+            "VALUES (?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET "
+            "channel_id = excluded.channel_id, guild_id = excluded.guild_id, "
+            "expires_at = excluded.expires_at",
+            (user_id, channel_id, guild_id, expires_at),
+        )
+
+
+def remover_mudae(user_id: int) -> None:
+    with _lock, _conectar() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute("DELETE FROM mudae_reminder WHERE user_id = ?", (user_id,))
+
+
+def listar_mudae() -> list[tuple[int, int, int, float]]:
+    """Retorna [(user_id, channel_id, guild_id, expires_at)]."""
+    with _lock, _conectar() as conn:
+        rows = conn.execute(
+            "SELECT user_id, channel_id, guild_id, expires_at FROM mudae_reminder"
+        ).fetchall()
+    return [(r["user_id"], r["channel_id"], r["guild_id"], r["expires_at"]) for r in rows]
 
 
 # ── Migração ─────────────────────────────────────────────────

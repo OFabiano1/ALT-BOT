@@ -23,6 +23,7 @@ COGS = (
     "cogs.niveis",
     "cogs.tickets",
     "cogs.economia",
+    "cogs.mudae",
 )
 
 # Intents mínimos. `members` e `message_content` são privilegiados e
@@ -146,6 +147,12 @@ async def ajuda(ctx):
             inline=True,
         )
 
+    embed.add_field(
+        name="slash",
+        value="`/ping` `/ptp` `/daily` `/saldo` `/roll`",
+        inline=False,
+    )
+
     embed.set_footer(text=brand.FOOTER)
     await ctx.send(embed=embed)
 
@@ -153,7 +160,7 @@ async def ajuda(ctx):
 # call
 @bot.command(name="call")
 async def call(ctx):
-    """Entra na call de voz que você está."""
+    """entra na call de voz que você está."""
     try:
         if ctx.author.voice is None or ctx.author.voice.channel is None:
             await ctx.send("você precisa estar em uma call de voz para eu entrar!")
@@ -183,7 +190,7 @@ async def call(ctx):
 # sair
 @bot.command(name="sair")
 async def sair(ctx):
-    """Sai da call de voz."""
+    """sai da call de voz."""
     vc = ctx.voice_client
     if vc is None:
         await ctx.send("não estou em call")

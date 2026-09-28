@@ -38,6 +38,27 @@ CREATE TABLE IF NOT EXISTS ptp (
     d       INTEGER NOT NULL DEFAULT 0,
     e       INTEGER NOT NULL DEFAULT 0
 );
+
+CREATE TABLE IF NOT EXISTS economia (
+    user_id   INTEGER PRIMARY KEY,
+    diamantes INTEGER NOT NULL DEFAULT 0,
+    ametista  INTEGER NOT NULL DEFAULT 0,
+    aura      TEXT,
+    last_daily TEXT
+);
+
+CREATE TABLE IF NOT EXISTS colecao (
+    user_id    INTEGER NOT NULL,
+    axolotl_id TEXT NOT NULL,
+    qtd        INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, axolotl_id)
+);
+
+CREATE TABLE IF NOT EXISTS auras (
+    user_id INTEGER NOT NULL,
+    aura_id TEXT NOT NULL,
+    PRIMARY KEY (user_id, aura_id)
+);
 """
 
 
@@ -171,6 +192,188 @@ def top_ptp(limite: int = 5) -> list[tuple[int, int, int, int]]:
             (limite,),
         ).fetchall()
     return [(r["user_id"], r["v"], r["d"], r["e"]) for r in rows]
+
+
+# ── Economia (diamantes + ametista + aura) ────────────────────
+def buscar_saldo(user_id: int) -> tuple[int, int, str | None]:
+    """Retorna (diamantes, ametista, aura_equipadada)."""
+    with _lock, _conectar() as conn:
+        row = conn.execute(
+            "SELECT diamantes, ametista, aura FROM economia WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()
+    if row:
+        return row["diamantes"], row["ametista"], row["aura"]
+    return 0, 0, None
+
+
+def adicionar_diamantes(user_id: int, qtd: int) -> int:
+    """Soma (ou subtrai se negativo) diamantes. Nunca deixa negativo. Retorna total."""
+    with _lock, _conectar() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            "SELECT diamantes FROM economia WHERE user_id = ?", (user_id,)
+        ).fetchone()
+        total = (row["diamantes"] if row else 0) + qtd
+        total = max(0, total)
+        conn.execute(
+            "INSERT INTO economia (user_id, diamantes) VALUES (?, ?) "
+            "ON CONFLICT(user_id) DO UPDATE SET diamantes = ?",
+            (user_id, total, total),
+        )
+        return total
+
+
+def adicionar_ametista(user_id: int, qtd: int) -> int:
+    """Soma (ou subtrai se negativo) ametista. Nunca deixa negativo. Retorna total."""
+    with _lock, _conectar() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            "SELECT ametista FROM economia WHERE user_id = ?", (user_id,)
+        ).fetchone()
+        total = (row["ametista"] if row else 0) + qtd
+        total = max(0, total)
+        conn.execute(
+            "INSERT INTO economia (user_id, ametista) VALUES (?, ?) "
+            "ON CONFLICT(user_id) DO UPDATE SET ametista = ?",
+            (user_id, total, total),
+        )
+        return total
+
+
+def transferir_diamantes(origem: int, destino: int, qtd: int) -> tuple[bool, int, int]:
+    """Transfere diamantes entre usuários. Retorna (ok, saldo_origem, saldo_destino)."""
+    if qtd <= 0 or origem == destino:
+        s_o, _, _ = buscar_saldo(origem)
+        s_d, _, _ = buscar_saldo(destino)
+        return False, s_o, s_d
+    with _lock, _conectar() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        r1 = conn.execute(
+            "SELECT diamantes FROM economia WHERE user_id = ?", (origem,)
+        ).fetchone()
+        s_origem = r1["diamantes"] if r1 else 0
+        if s_origem < qtd:
+            return False, s_origem, (
+                conn.execute(
+                    "SELECT diamantes FROM economia WHERE user_id = ?", (destino,)
+                ).fetchone() or {"diamantes": 0}
+            )["diamantes"]
+        r2 = conn.execute(
+            "SELECT diamantes FROM economia WHERE user_id = ?", (destino,)
+        ).fetchone()
+        s_dest = r2["diamantes"] if r2 else 0
+        conn.execute(
+            "INSERT INTO economia (user_id, diamantes) VALUES (?, ?) "
+            "ON CONFLICT(user_id) DO UPDATE SET diamantes = ?",
+            (origem, s_origem - qtd, s_origem - qtd),
+        )
+        conn.execute(
+            "INSERT INTO economia (user_id, diamantes) VALUES (?, ?) "
+            "ON CONFLICT(user_id) DO UPDATE SET diamantes = ?",
+            (destino, s_dest + qtd, s_dest + qtd),
+        )
+        return True, s_origem - qtd, s_dest + qtd
+
+
+def tentar_daily(user_id: int, dima: int, amet: int, hoje: str) -> tuple[bool, int, int]:
+    """Tenta resgatar o daily. Retorna (ok, diamantes, ametista).
+
+    `hoje` é YYYY-MM-DD em UTC. Se last_daily == hoje, nega.
+    """
+    with _lock, _conectar() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            "SELECT diamantes, ametista, last_daily FROM economia WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()
+        if row and row["last_daily"] == hoje:
+            return False, row["diamantes"], row["ametista"]
+        d_total = (row["diamantes"] if row else 0) + dima
+        a_total = (row["ametista"] if row else 0) + amet
+        conn.execute(
+            "INSERT INTO economia (user_id, diamantes, ametista, last_daily) "
+            "VALUES (?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET "
+            "diamantes = excluded.diamantes, ametista = excluded.ametista, "
+            "last_daily = excluded.last_daily",
+            (user_id, d_total, a_total, hoje),
+        )
+        return True, d_total, a_total
+
+
+def top_diamantes(limite: int = 10) -> list[tuple[int, int]]:
+    """Top N por diamantes. Retorna [(user_id, diamantes)]."""
+    with _lock, _conectar() as conn:
+        rows = conn.execute(
+            "SELECT user_id, diamantes FROM economia "
+            "WHERE diamantes > 0 ORDER BY diamantes DESC LIMIT ?",
+            (limite,),
+        ).fetchall()
+    return [(r["user_id"], r["diamantes"]) for r in rows]
+
+
+# ── Auras ────────────────────────────────────────────────────
+def tem_aura(user_id: int, aura_id: str) -> bool:
+    with _lock, _conectar() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM auras WHERE user_id = ? AND aura_id = ?",
+            (user_id, aura_id),
+        ).fetchone()
+    return row is not None
+
+
+def dar_aura(user_id: int, aura_id: str) -> None:
+    with _lock, _conectar() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute(
+            "INSERT OR IGNORE INTO auras (user_id, aura_id) VALUES (?, ?)",
+            (user_id, aura_id),
+        )
+
+
+def auras_usuario(user_id: int) -> list[str]:
+    with _lock, _conectar() as conn:
+        rows = conn.execute(
+            "SELECT aura_id FROM auras WHERE user_id = ?", (user_id,)
+        ).fetchall()
+    return [r["aura_id"] for r in rows]
+
+
+def equipar_aura(user_id: int, aura_id: str | None) -> None:
+    with _lock, _conectar() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute(
+            "INSERT INTO economia (user_id, aura) VALUES (?, ?) "
+            "ON CONFLICT(user_id) DO UPDATE SET aura = excluded.aura",
+            (user_id, aura_id),
+        )
+
+
+# ── Coleção de axolotls ──────────────────────────────────────
+def adicionar_axolotl(user_id: int, axolotl_id: str) -> int:
+    """Incrementa a coleção. Retorna a qtd atual daquele axolotl."""
+    with _lock, _conectar() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute(
+            "INSERT INTO colecao (user_id, axolotl_id, qtd) VALUES (?, ?, 1) "
+            "ON CONFLICT(user_id, axolotl_id) DO UPDATE SET qtd = qtd + 1",
+            (user_id, axolotl_id),
+        )
+        row = conn.execute(
+            "SELECT qtd FROM colecao WHERE user_id = ? AND axolotl_id = ?",
+            (user_id, axolotl_id),
+        ).fetchone()
+        return row["qtd"]
+
+
+def buscar_colecao(user_id: int) -> list[tuple[str, int]]:
+    """Retorna [(axolotl_id, qtd)]."""
+    with _lock, _conectar() as conn:
+        rows = conn.execute(
+            "SELECT axolotl_id, qtd FROM colecao WHERE user_id = ? ORDER BY qtd DESC",
+            (user_id,),
+        ).fetchall()
+    return [(r["axolotl_id"], r["qtd"]) for r in rows]
 
 
 # ── Migração ─────────────────────────────────────────────────

@@ -36,7 +36,7 @@ FALAS = {
         "eu sabia. você não tinha chance.",
         "essa foi de manual.",
         "treinei dez mil rodadas pra esse momento.",
-        "🫟 o axolote dominou. sem discussão.",
+        f"{brand.AXOLOTL} o axolote dominou. sem discussão.",
     ],
     "empate": [
         "mesma energia. respeitei.",
@@ -59,6 +59,9 @@ TITULOS = {
 }
 
 MEDALHAS = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"]
+
+# Recompensa em diamantes por resultado do ptp.
+PTP_DIAMANTES = {"vitoria": 20, "empate": 5, "derrota": 0}
 
 
 def _jogada(usuario: int, escolha: str, jogada_bot: str) -> str:
@@ -92,7 +95,7 @@ class Jogos(commands.Cog, name="jogos"):
         }
 
     @staticmethod
-    def _montar_embed(dados: dict, placar: tuple[int, int, int]) -> discord.Embed:
+    def _montar_embed(dados: dict, placar: tuple[int, int, int], recompensa: int = 0) -> discord.Embed:
         v, d, e = placar
         embed = dados["embed"]
         embed.add_field(
@@ -111,7 +114,8 @@ class Jogos(commands.Cog, name="jogos"):
             value=random.choice(FALAS[dados["resultado"]]),
             inline=False,
         )
-        embed.set_footer(text=f"seu placar: {v}V {d}D {e}E  •  use >placar • {brand.FOOTER}")
+        extra = f"  •  +{recompensa} {brand.DIAMANTE}" if recompensa else ""
+        embed.set_footer(text=f"seu placar: {v}V {d}D {e}E{extra}  •  use >placar • {brand.FOOTER}")
         return embed
 
     # ── >ptp ─────────────────────────────────────────────────
@@ -129,7 +133,12 @@ class Jogos(commands.Cog, name="jogos"):
         placar = await asyncio.to_thread(
             database.registrar_ptp, ctx.author.id, dados["resultado"]
         )
-        await ctx.send(embed=self._montar_embed(dados, placar))
+        recompensa = PTP_DIAMANTES.get(dados["resultado"], 0)
+        if recompensa:
+            await asyncio.to_thread(
+                database.adicionar_diamantes, ctx.author.id, recompensa
+            )
+        await ctx.send(embed=self._montar_embed(dados, placar, recompensa))
 
     # ── /ptp (slash) ─────────────────────────────────────────
     @app_commands.command(name="ptp", description="Jogue Pedra, Tesoura e Papel contra o ALT!")
@@ -151,7 +160,12 @@ class Jogos(commands.Cog, name="jogos"):
         placar = await asyncio.to_thread(
             database.registrar_ptp, interaction.user.id, dados["resultado"]
         )
-        await interaction.response.send_message(embed=self._montar_embed(dados, placar))
+        recompensa = PTP_DIAMANTES.get(dados["resultado"], 0)
+        if recompensa:
+            await asyncio.to_thread(
+                database.adicionar_diamantes, interaction.user.id, recompensa
+            )
+        await interaction.response.send_message(embed=self._montar_embed(dados, placar, recompensa))
 
     # ── >placar ──────────────────────────────────────────────
     @commands.command(name="placar")

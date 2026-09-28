@@ -1,12 +1,13 @@
+import discord
+from discord.ext import commands
+from dotenv import load_dotenv
+
 import asyncio
 import logging
 import os
 import sys
 
-import discord
-from discord.ext import commands
-from dotenv import load_dotenv
-
+import random
 import brand
 import database
 
@@ -21,6 +22,7 @@ COGS = (
     "cogs.jogos",
     "cogs.niveis",
     "cogs.tickets",
+    "cogs.economia",
 )
 
 # Intents mínimos. `members` e `message_content` são privilegiados e

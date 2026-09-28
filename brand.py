@@ -6,8 +6,26 @@ mensagem pertença ao mesmo sistema visual.
 Referência: prompt.txt — AXOLOTL BR.
 """
 
+import os
+
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except ImportError:
+    pass
+
 # ── Símbolo ──────────────────────────────────────────────────
-AXOLOTL = "\U0001FADF"  # 🫟
+# Emoji oficial do bot é o custom `:02:`. O valor vem do .env como
+# `<:02:ID>` — sem ID configurado, cai para o 🫟 unicode para não
+# quebrar em dev. Nunca hardcodar `<:02:...>` no código, só via env.
+AXOLOTL = os.getenv("AXOLOTL_EMOJI", "\U0001FADF").strip() or "\U0001FADF"  # 🫟 fallback
+
+# ── Economia ─────────────────────────────────────────────────
+# `:amethyst:` também é custom do servidor (`<:amethyst:ID>` no env).
+# Diamante é 💎 por padrão, sobrescrevível se o servidor tiver custom.
+AMETHYST = os.getenv("AMETHYST_EMOJI", "💜").strip() or "💜"
+DIAMANTE = os.getenv("DIAMANTE_EMOJI", "💎").strip() or "💎"
 
 # ── Paleta ───────────────────────────────────────────────────
 # Superfícies do dark mode. A profundidade vem de camadas e bordas
@@ -41,4 +59,5 @@ CATEGORIAS = {
     "tickets":   "🎫 Tickets",
     "Status":    "📡 Status",
     "Status ":   "📡 Status",
+    "Economia":  "💎 Economia",
 }

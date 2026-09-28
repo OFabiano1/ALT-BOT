@@ -30,10 +30,15 @@ COGS = (
 # verdade (menções em tickets, XP por mensagem, cargos de moderação).
 # `Intents.all()` ligava também `presences` e `typing`, que não são
 # usados e só aumentam a superfície.
+# `guild_messages`/`dm_messages` são os eventos de mensagem em si — sem
+# eles o bot nem recebe a mensagem (prefixo `>` morre, slash continua).
+# `message_content` sozinho só libera o texto, não o evento.
 intents = discord.Intents(
     guilds=True,
     members=True,
     message_content=True,
+    guild_messages=True,
+    dm_messages=True,
 )
 
 logging.basicConfig(

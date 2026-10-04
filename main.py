@@ -119,12 +119,12 @@ async def on_tree_error(
 # hello world
 @bot.command()
 async def axolotl(ctx):
-    await ctx.send(f"{brand.AXOLOTL} Hello World!")
+    await ctx.send(f"{brand.AXOLOTL} Axolotl!")
 
 
-@bot.tree.command(name="axolotl", description="Hello World do axolote.")
+@bot.tree.command(name="axolotl", description="A assinatura do axolote.")
 async def axolotl_slash(interaction: discord.Interaction):
-    await interaction.response.send_message(f"{brand.AXOLOTL} Hello World!")
+    await interaction.response.send_message(f"{brand.AXOLOTL} Axolotl!")
 
 
 # restart

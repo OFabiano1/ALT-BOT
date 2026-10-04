@@ -12,7 +12,6 @@ import database
 log = logging.getLogger("alt.jogos")
 
 OPCOES = ["pedra", "tesoura", "papel"]
-EMOJIS_JOGO = {"pedra": "🪨", "tesoura": "✂️", "papel": "📄"}
 
 # Chave: o que o jogador fez.
 VENCE = {
@@ -42,7 +41,7 @@ FALAS = {
         "mesma energia. respeitei.",
         "empate. a gente se entende.",
         "clonou meu estilo, hein.",
-        "dupla forte. 🔥",
+        "dupla forte.",
     ],
 }
 
@@ -53,12 +52,12 @@ CORES = {
 }
 
 TITULOS = {
-    "vitoria": "🎉 VOCÊ GANHOU!",
-    "derrota": "💀 VOCÊ PERDEU!",
-    "empate":  "⚖️ EMPATE!",
+    "vitoria": "VOCÊ GANHOU!",
+    "derrota": "VOCÊ PERDEU!",
+    "empate":  "EMPATE!",
 }
 
-MEDALHAS = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"]
+MEDALHAS = ["1.", "2.", "3.", "4.", "5."]
 
 # Recompensa em diamantes por resultado do ptp.
 PTP_DIAMANTES = {"vitoria": 20, "empate": 5, "derrota": 0}
@@ -100,12 +99,12 @@ class Jogos(commands.Cog, name="jogos"):
         embed = dados["embed"]
         embed.add_field(
             name=f"{dados['jogador'].display_name} jogou",
-            value=f"{EMOJIS_JOGO[dados['escolha']]} **{dados['escolha'].capitalize()}**",
+            value=f"**{dados['escolha'].capitalize()}**",
             inline=True,
         )
         embed.add_field(
             name="alt jogou",
-            value=f"{EMOJIS_JOGO[dados['jogada_bot']]} **{dados['jogada_bot'].capitalize()}**",
+            value=f"**{dados['jogada_bot'].capitalize()}**",
             inline=True,
         )
         embed.add_field(name="", value="", inline=True)
@@ -144,9 +143,9 @@ class Jogos(commands.Cog, name="jogos"):
     @app_commands.command(name="ptp", description="Jogue Pedra, Tesoura e Papel contra o ALT!")
     @app_commands.describe(escolha="sua jogada: pedra, tesoura ou papel")
     @app_commands.choices(escolha=[
-        app_commands.Choice(name="🪨 pedra", value="pedra"),
-        app_commands.Choice(name="✂️ tesoura", value="tesoura"),
-        app_commands.Choice(name="📄 papel", value="papel"),
+        app_commands.Choice(name="pedra", value="pedra"),
+        app_commands.Choice(name="tesoura", value="tesoura"),
+        app_commands.Choice(name="papel", value="papel"),
     ])
     async def ptp_slash(self, interaction: discord.Interaction, escolha: str):
         dados = self._resolver(escolha, interaction.user)
@@ -183,13 +182,13 @@ class Jogos(commands.Cog, name="jogos"):
         pct = round(v / total * 100)
 
         embed = discord.Embed(
-            title=f"📊 Placar de {ctx.author.display_name}",
+            title=f"Placar de {ctx.author.display_name}",
             color=brand.PRIMARY,
         )
-        embed.add_field(name="✅ vitórias", value=str(v), inline=True)
-        embed.add_field(name="❌ derrotas", value=str(d), inline=True)
-        embed.add_field(name="⚖️ empates", value=str(e), inline=True)
-        embed.add_field(name="🎯 taxa de vitória", value=f"{pct}%", inline=False)
+        embed.add_field(name="vitórias", value=str(v), inline=True)
+        embed.add_field(name="derrotas", value=str(d), inline=True)
+        embed.add_field(name="empates", value=str(e), inline=True)
+        embed.add_field(name="taxa de vitória", value=f"{pct}%", inline=False)
         embed.set_footer(text=brand.FOOTER)
         await ctx.send(embed=embed)
 
@@ -211,7 +210,7 @@ class Jogos(commands.Cog, name="jogos"):
             linhas.append(f"{MEDALHAS[i]} **{nome}** — {v}V {d}D {e}E")
 
         embed = discord.Embed(
-            title="🏆 Ranking — Top 5 Jogadores",
+            title="Ranking — Top 5 Jogadores",
             description="\n".join(linhas),
             color=brand.WARNING,
         )
@@ -234,13 +233,13 @@ class Jogos(commands.Cog, name="jogos"):
         pct = round(v / total * 100)
 
         embed = discord.Embed(
-            title=f"📊 Placar de {interaction.user.display_name}",
+            title=f"Placar de {interaction.user.display_name}",
             color=brand.PRIMARY,
         )
-        embed.add_field(name="✅ vitórias", value=str(v), inline=True)
-        embed.add_field(name="❌ derrotas", value=str(d), inline=True)
-        embed.add_field(name="⚖️ empates", value=str(e), inline=True)
-        embed.add_field(name="🎯 taxa de vitória", value=f"{pct}%", inline=False)
+        embed.add_field(name="vitórias", value=str(v), inline=True)
+        embed.add_field(name="derrotas", value=str(d), inline=True)
+        embed.add_field(name="empates", value=str(e), inline=True)
+        embed.add_field(name="taxa de vitória", value=f"{pct}%", inline=False)
         embed.set_footer(text=brand.FOOTER)
         await interaction.response.send_message(embed=embed)
 
@@ -263,7 +262,7 @@ class Jogos(commands.Cog, name="jogos"):
             linhas.append(f"{MEDALHAS[i]} **{nome}** — {v}V {d}D {e}E")
 
         embed = discord.Embed(
-            title="🏆 Ranking — Top 5 Jogadores",
+            title="Ranking — Top 5 Jogadores",
             description="\n".join(linhas),
             color=brand.WARNING,
         )

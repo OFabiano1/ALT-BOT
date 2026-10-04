@@ -76,7 +76,7 @@ async def criar_ticket(interaction: discord.Interaction, emoji: str, label: str)
     )
 
     embed = discord.Embed(
-        title=f"{emoji} {label}",
+        title=f"{label}",
         description=(
             f"{interaction.user.mention} ticket criado!\n\n"
             "envie todas as informações possíveis sobre seu caso e aguarde até que um "
@@ -92,8 +92,8 @@ async def criar_ticket(interaction: discord.Interaction, emoji: str, label: str)
 class Dropdown(discord.ui.Select):
     def __init__(self):
         options = [
-            discord.SelectOption(value="ticket",   label="Ticket",   emoji="🎫"),
-            discord.SelectOption(value="denuncia", label="Denúncia", emoji="🚨"),
+            discord.SelectOption(value="ticket",   label="Ticket"),
+            discord.SelectOption(value="denuncia", label="Denúncia"),
         ]
         super().__init__(
             placeholder="selecione uma opção...",
@@ -105,9 +105,9 @@ class Dropdown(discord.ui.Select):
 
     async def callback(self, interaction: discord.Interaction):
         if self.values[0] == "ticket":
-            await criar_ticket(interaction, "🎫", "Ticket")
+            await criar_ticket(interaction, "ticket", "Ticket")
         elif self.values[0] == "denuncia":
-            await criar_ticket(interaction, "🚨", "Denúncia")
+            await criar_ticket(interaction, "denuncia", "Denúncia")
 
 
 class DropdownView(discord.ui.View):
@@ -134,13 +134,13 @@ class Tickets(commands.Cog, name="tickets"):
     async def setup_ticket(self, ctx: commands.Context):
         """[Admin] Envia o embed com o dropdown de tickets."""
         if not TICKET_CHANNEL_ID:
-            await ctx.send("❌ `TICKET_CHANNEL_ID` não configurado!")
+            await ctx.send("`TICKET_CHANNEL_ID` não configurado!")
             return
 
         # get_channel() foi deprecado no discord.py 2.x.
         canal = ctx.guild.get_channel_or_thread(TICKET_CHANNEL_ID)
         if canal is None:
-            await ctx.send("❌ canal de tickets não encontrado!")
+            await ctx.send("canal de tickets não encontrado!")
             return
 
         embed = discord.Embed(
@@ -160,7 +160,7 @@ class Tickets(commands.Cog, name="tickets"):
         ))
 
         await canal.send(embed=embed, view=DropdownView())
-        await ctx.send("✅ embed de tickets enviado!", delete_after=5)
+        await ctx.send("embed de tickets enviado!", delete_after=5)
 
     # ── >fecharticket ────────────────────────────────────────
     @commands.command(name="fecharticket")
@@ -200,13 +200,13 @@ class Tickets(commands.Cog, name="tickets"):
         """Versão slash do >setupticket."""
         if not TICKET_CHANNEL_ID:
             await interaction.response.send_message(
-                "❌ `TICKET_CHANNEL_ID` não configurado!", ephemeral=True
+                "`TICKET_CHANNEL_ID` não configurado!", ephemeral=True
             )
             return
         canal = interaction.guild.get_channel_or_thread(TICKET_CHANNEL_ID)
         if canal is None:
             await interaction.response.send_message(
-                "❌ canal de tickets não encontrado!", ephemeral=True
+                "canal de tickets não encontrado!", ephemeral=True
             )
             return
 
@@ -227,7 +227,7 @@ class Tickets(commands.Cog, name="tickets"):
         ))
 
         await canal.send(embed=embed, view=DropdownView())
-        await interaction.response.send_message("✅ embed de tickets enviado!", ephemeral=True)
+        await interaction.response.send_message("embed de tickets enviado!", ephemeral=True)
 
     # ── /fecharticket ────────────────────────────────────────
     @app_commands.command(name="fecharticket", description="Fecha o ticket atual.")

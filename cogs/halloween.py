@@ -48,18 +48,18 @@ def dias_faltando(hoje: datetime.date) -> int:
 
 def texto_status(dias: int) -> str:
     if dias == 0:
-        return "🎃 feliz halloween! é hoje!"
+        return "feliz halloween! é hoje!"
     if dias == 1:
-        return "🎃 é amanhã! falta 1 dia pro halloween"
-    return f"🎃 faltam {dias} dias pro halloween"
+        return "é amanhã! falta 1 dia pro halloween"
+    return f"faltam {dias} dias pro halloween"
 
 
 def texto_mensagem(dias: int) -> str:
     if dias == 0:
-        return f"{brand.AXOLOTL} 🎃 É HOJE! feliz halloween, galera!"
+        return f"{brand.AXOLOTL} É HOJE! feliz halloween, galera!"
     if dias == 1:
-        return f"{brand.AXOLOTL} 🎃 é amanhã! falta **1 dia** pro halloween... preparem as fantasias."
-    return f"{brand.AXOLOTL} 🎃 faltam **{dias} dias** pro halloween!"
+        return f"{brand.AXOLOTL} é amanhã! falta **1 dia** pro halloween... preparem as fantasias."
+    return f"{brand.AXOLOTL} faltam **{dias} dias** pro halloween!"
 
 
 class Halloween(commands.Cog, name="Halloween"):
@@ -86,8 +86,8 @@ class Halloween(commands.Cog, name="Halloween"):
             canal = self.bot.get_channel(TEXT_CHANNEL_ID)
             if canal is None:
                 canal = await self.bot.fetch_channel(TEXT_CHANNEL_ID)
-            embed = discord.Embed(
-                title="🎃 countdown pro halloween",
+                embed = discord.Embed(
+                    title="countdown pro halloween",
                 description=texto_mensagem(dias),
                 color=brand.WARNING,
             )
@@ -140,7 +140,7 @@ class Halloween(commands.Cog, name="Halloween"):
         await ctx.send(texto_mensagem(dias))
         if VOICE_CHANNEL_ID and not await self._atualizar_status(dias):
             await ctx.send(
-                "⚠️ a mensagem foi, mas o status da call não atualizou — "
+                "aviso: a mensagem foi, mas o status da call não atualizou — "
                 "confere se eu tenho a permissão **Voice Channel Status** na call."
             )
 
@@ -153,7 +153,7 @@ class Halloween(commands.Cog, name="Halloween"):
         await interaction.response.send_message(texto_mensagem(dias))
         if VOICE_CHANNEL_ID and not await self._atualizar_status(dias):
             await interaction.followup.send(
-                "⚠️ a mensagem foi, mas o status da call não atualizou — "
+                "aviso: a mensagem foi, mas o status da call não atualizou — "
                 "confere se eu tenho a permissão **Voice Channel Status** na call.",
                 ephemeral=True,
             )

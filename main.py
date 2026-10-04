@@ -89,7 +89,7 @@ async def on_command_error(ctx: commands.Context, erro: commands.CommandError):
     log.exception("comando %s falhou", ctx.command)
     # Erro visível no chat — comando que falha em silêncio é indepurável.
     try:
-        await ctx.send(f"❌ deu ruim: `{type(original).__name__}: {original}`")
+        await ctx.send(f"deu ruim: `{type(original).__name__}: {original}`")
     except discord.DiscordException:
         pass
 
@@ -106,7 +106,7 @@ async def on_tree_error(
     else:
         original = getattr(erro, "original", erro)
         log.exception("slash /%s falhou", interaction.command_name)
-        texto = f"❌ deu ruim: `{type(original).__name__}: {original}`"
+        texto = f"deu ruim: `{type(original).__name__}: {original}`"
     try:
         if interaction.response.is_done():
             await interaction.followup.send(texto, ephemeral=True)
@@ -192,7 +192,7 @@ def _embed_ajuda(linhas_por_categoria: dict[str, list[str]]) -> discord.Embed:
     slash = " ".join(
         f"`/{c.name}`" for c in sorted(bot.tree.walk_commands(), key=lambda c: c.name)
     )
-    embed.add_field(name="⌨️ slash", value=slash or "`/ping`", inline=False)
+    embed.add_field(name="slash", value=slash or "`/ping`", inline=False)
     embed.set_footer(text=brand.FOOTER)
     return embed
 
@@ -213,9 +213,9 @@ async def ajuda(ctx):
                 if inspect.isawaitable(resultado):
                     resultado = await resultado
             except commands.CheckFailure:
-                return "🔒 restrito"
+                return "restrito"
             if resultado is False:
-                return "🔒 restrito"
+                return "restrito"
         return ""
 
     linhas: dict[str, list[str]] = {}
@@ -266,14 +266,14 @@ async def call(ctx):
 
         if ctx.voice_client is not None:
             await ctx.voice_client.move_to(canal)
-            await ctx.send(f"fui pra **{canal.name}**! 🎧")
+            await ctx.send(f"fui pra **{canal.name}**!")
             return
 
         await canal.connect()
-        await ctx.send(f"tô na call **{canal.name}**! 🎧")
+        await ctx.send(f"tô na call **{canal.name}**!")
     except Exception as erro:
         log.exception("falha ao entrar na call")
-        await ctx.send(f"❌ não consegui entrar na call: `{type(erro).__name__}`")
+        await ctx.send(f"não consegui entrar na call: `{type(erro).__name__}`")
 
 
 @bot.tree.command(name="call", description="Me chama pra call de voz que você tá.")
@@ -304,10 +304,10 @@ async def call_slash(interaction: discord.Interaction):
             await vc.move_to(canal)
         else:
             await canal.connect()
-        await interaction.response.send_message(f"tô na call **{canal.name}**! 🎧")
+        await interaction.response.send_message(f"tô na call **{canal.name}**!")
     except Exception as erro:
         log.exception("falha ao entrar na call (slash)")
-        texto = f"❌ não consegui entrar na call: `{type(erro).__name__}`"
+        texto = f"não consegui entrar na call: `{type(erro).__name__}`"
         try:
             if interaction.response.is_done():
                 await interaction.followup.send(texto, ephemeral=True)
@@ -326,7 +326,7 @@ async def sair(ctx):
         await ctx.send("não estou em call")
         return
     await vc.disconnect()
-    await ctx.send("saí da call! 👋")
+    await ctx.send("saí da call!")
 
 
 @bot.tree.command(name="sair", description="Tira o bot da call de voz.")
@@ -337,7 +337,7 @@ async def sair_slash(interaction: discord.Interaction):
         await interaction.response.send_message("não estou em call", ephemeral=True)
         return
     await vc.disconnect()
-    await interaction.response.send_message("saí da call! 👋")
+    await interaction.response.send_message("saí da call!")
 
 
 async def main():

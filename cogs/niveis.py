@@ -49,7 +49,7 @@ class Niveis(commands.Cog, name="Níveis"):
 
         if subiu:
             embed = discord.Embed(
-                title="🎉 Subiu de nível!",
+                title="Subiu de nível!",
                 description=(
                     f"{message.author.mention} agora é **nível {nivel}**! {brand.AXOLOTL}"
                 ),
@@ -74,12 +74,12 @@ class Niveis(commands.Cog, name="Níveis"):
         progresso = BARRA_CHEIA * celulas + BARRA_VAZIA * (BARRA_CELULAS - celulas)
 
         embed = discord.Embed(
-            title=f"📊 Rank de {membro.display_name}",
+            title=f"Rank de {membro.display_name}",
             color=brand.PRIMARY,
         )
-        embed.add_field(name="🏅 Nível", value=str(nivel), inline=True)
-        embed.add_field(name="✨ XP", value=f"{xp}/{xp_prox}", inline=True)
-        embed.add_field(name="📈 Progresso", value=f"`{progresso}`", inline=False)
+        embed.add_field(name="Nível", value=str(nivel), inline=True)
+        embed.add_field(name="XP", value=f"{xp}/{xp_prox}", inline=True)
+        embed.add_field(name="Progresso", value=f"`{progresso}`", inline=False)
         embed.set_thumbnail(url=membro.display_avatar.url)
         embed.set_footer(text=brand.FOOTER)
         await ctx.send(embed=embed)
@@ -93,7 +93,7 @@ class Niveis(commands.Cog, name="Níveis"):
             await ctx.send(f"{brand.AXOLOTL} ninguém tem XP ainda! Comecem a conversar!")
             return
 
-        medalhas = ["🥇", "🥈", "🥉"] + [f"**{i}.**" for i in range(4, 11)]
+        medalhas = [f"**{i}.**" for i in range(1, 11)]
         linhas = []
 
         for i, (user_id, nivel, xp) in enumerate(ranking):
@@ -102,7 +102,7 @@ class Niveis(commands.Cog, name="Níveis"):
             linhas.append(f"{medalhas[i]} {nome} — Nível **{nivel}** | {xp} XP")
 
         embed = discord.Embed(
-            title="🏆 Top 10 — Ranking de Níveis",
+            title="Top 10 — Ranking de Níveis",
             description="\n".join(linhas),
             color=brand.WARNING,
         )
@@ -135,12 +135,12 @@ class Niveis(commands.Cog, name="Níveis"):
         progresso = BARRA_CHEIA * celulas + BARRA_VAZIA * (BARRA_CELULAS - celulas)
 
         embed = discord.Embed(
-            title=f"📊 Rank de {membro.display_name}",
+            title=f"Rank de {membro.display_name}",
             color=brand.PRIMARY,
         )
-        embed.add_field(name="🏅 Nível", value=str(nivel), inline=True)
-        embed.add_field(name="✨ XP", value=f"{xp}/{xp_prox}", inline=True)
-        embed.add_field(name="📈 Progresso", value=f"`{progresso}`", inline=False)
+        embed.add_field(name="Nível", value=str(nivel), inline=True)
+        embed.add_field(name="XP", value=f"{xp}/{xp_prox}", inline=True)
+        embed.add_field(name="Progresso", value=f"`{progresso}`", inline=False)
         embed.set_thumbnail(url=membro.display_avatar.url)
         embed.set_footer(text=brand.FOOTER)
         await interaction.response.send_message(embed=embed)
@@ -157,7 +157,7 @@ class Niveis(commands.Cog, name="Níveis"):
             )
             return
 
-        medalhas = ["🥇", "🥈", "🥉"] + [f"**{i}.**" for i in range(4, 11)]
+        medalhas = [f"**{i}.**" for i in range(1, 11)]
         linhas = []
 
         for i, (user_id, nivel, xp) in enumerate(ranking):
@@ -166,7 +166,7 @@ class Niveis(commands.Cog, name="Níveis"):
             linhas.append(f"{medalhas[i]} {nome} — Nível **{nivel}** | {xp} XP")
 
         embed = discord.Embed(
-            title="🏆 Top 10 — Ranking de Níveis",
+            title="Top 10 — Ranking de Níveis",
             description="\n".join(linhas),
             color=brand.WARNING,
         )

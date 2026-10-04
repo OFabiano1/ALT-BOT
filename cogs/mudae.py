@@ -245,7 +245,7 @@ class Mudae(commands.Cog, name="Mudae"):
             if canal is not None:
                 embed = discord.Embed(
                     title=f"{brand.AXOLOTL} rolls de volta!",
-                    description=f"<@{user_id}> seus rolls do Mudae voltaram! 🎲",
+                    description=f"<@{user_id}> seus rolls do Mudae voltaram!",
                     color=brand.SECONDARY,
                 )
                 embed.set_footer(text=brand.FOOTER)
@@ -276,7 +276,7 @@ class Mudae(commands.Cog, name="Mudae"):
             return
         await self.agendar(ctx.author.id, ctx.channel.id, ctx.guild.id if ctx.guild else 0, minutos)
         await ctx.send(
-            f"{brand.AXOLOTL} {ctx.author.mention} te marco em **{minutos} min**! 🎲"
+            f"{brand.AXOLOTL} {ctx.author.mention} te marco em **{minutos} min**!"
         )
 
     @commands.command(name="mudae_stop")
@@ -304,7 +304,7 @@ class Mudae(commands.Cog, name="Mudae"):
         guild_id = interaction.guild.id if interaction.guild else 0
         await self.agendar(interaction.user.id, interaction.channel.id, guild_id, minutos)
         await interaction.response.send_message(
-            f"{brand.AXOLOTL} te marco em **{minutos} min**! 🎲", ephemeral=True
+            f"{brand.AXOLOTL} te marco em **{minutos} min**!", ephemeral=True
         )
 
     # ── /mudae_stop ─────────────────────────────────────────

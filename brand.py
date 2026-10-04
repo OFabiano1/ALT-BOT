@@ -17,15 +17,14 @@ except ImportError:
 
 # ── Símbolo ──────────────────────────────────────────────────
 # Emoji oficial do bot é o custom `:02:`. O valor vem do .env como
-# `<:02:ID>` — sem ID configurado, cai para o 🫟 unicode para não
-# quebrar em dev. Nunca hardcodar `<:02:...>` no código, só via env.
-AXOLOTL = os.getenv("AXOLOTL_EMOJI", "\U0001FADF").strip() or "\U0001FADF"  # 🫟 fallback
+# `<:02:ID>`. Nunca hardcodar `<:02:...>` no código, só via env.
+AXOLOTL = os.getenv("AXOLOTL_EMOJI", "").strip()
 
 # ── Economia ─────────────────────────────────────────────────
 # `:amethyst:` também é custom do servidor (`<:amethyst:ID>` no env).
-# Diamante é 💎 por padrão, sobrescrevível se o servidor tiver custom.
-AMETHYST = os.getenv("AMETHYST_EMOJI", "💜").strip() or "💜"
-DIAMANTE = os.getenv("DIAMANTE_EMOJI", "💎").strip() or "💎"
+# Diamante é custom do servidor (`<:diamond:ID>` no env).
+AMETHYST = os.getenv("AMETHYST_EMOJI", "").strip()
+DIAMANTE = os.getenv("DIAMANTE_EMOJI", "").strip()
 
 # ── Paleta ───────────────────────────────────────────────────
 # Superfícies do dark mode. A profundidade vem de camadas e bordas
@@ -53,13 +52,13 @@ FOOTER = "Player to Player • Axolotl BR"
 
 # ── Rótulos de categoria (comandos de ajuda) ─────────────────
 CATEGORIAS = {
-    "Geral":     "🤖 Geral",
-    "jogos":     "🎮 Jogos",
-    "Níveis":    "⭐ Níveis",
-    "tickets":   "🎫 Tickets",
-    "Status":    "📡 Status",
-    "Status ":   "📡 Status",
-    "Economia":  "💎 Economia",
-    "Mudae":     "🎲 Mudae",
-    "Halloween": "🎃 Halloween",
+    "Geral":     "Geral",
+    "jogos":     "Jogos",
+    "Níveis":    "Níveis",
+    "tickets":   "Tickets",
+    "Status":    "Status",
+    "Status ":   "Status",
+    "Economia":  "Economia",
+    "Mudae":     "Mudae",
+    "Halloween": "Halloween",
 }

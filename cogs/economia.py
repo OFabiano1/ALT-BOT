@@ -70,7 +70,7 @@ def _embed_saldo(membro: discord.Member, dima: int, amet: int, aura_id: str | No
     )
     embed.add_field(name=f"{brand.DIAMANTE} diamantes", value=str(dima), inline=True)
     embed.add_field(name=f"{brand.AMETHYST} ametista", value=str(amet), inline=True)
-    embed.add_field(name="✨ aura", value=aura_nome, inline=True)
+    embed.add_field(name="aura", value=aura_nome, inline=True)
     embed.add_field(name=f"{brand.AXOLOTL} axolotls", value=str(total_axo), inline=True)
     embed.set_thumbnail(url=membro.display_avatar.url)
     embed.set_footer(text=brand.FOOTER)
@@ -205,7 +205,7 @@ class Economia(commands.Cog, name="Economia"):
         dima, amet, aura = await asyncio.to_thread(database.buscar_saldo, ctx.author.id)
         linhas = []
         for aid, info in AURAS.items():
-            dono = "✅" if await asyncio.to_thread(database.tem_aura, ctx.author.id, aid) else ""
+            dono = "(sua)" if await asyncio.to_thread(database.tem_aura, ctx.author.id, aid) else ""
             equip = " (equipada)" if aura == aid else ""
             linhas.append(
                 f"`{aid}` — **{info['nome']}** — **{info['preco']}** {brand.AMETHYST} {dono}{equip}\n└ {info['desc']}"
@@ -253,7 +253,7 @@ class Economia(commands.Cog, name="Economia"):
         await asyncio.to_thread(database.dar_aura, ctx.author.id, aura_id)
         await asyncio.to_thread(database.equipar_aura, ctx.author.id, aura_id)
         await ctx.send(
-            f"{brand.AXOLOTL} {ctx.author.mention} comprou e equipou **{AURAS[aura_id]['nome']}**! ✨"
+            f"{brand.AXOLOTL} {ctx.author.mention} comprou e equipou **{AURAS[aura_id]['nome']}**!"
         )
 
     # ── >aura / >auras ───────────────────────────────────────
@@ -271,7 +271,7 @@ class Economia(commands.Cog, name="Economia"):
             await ctx.send(f"{brand.AXOLOTL} você ainda não tem essa aura! compre com `>buy {aura_id}`.")
             return
         await asyncio.to_thread(database.equipar_aura, ctx.author.id, aura_id)
-        await ctx.send(f"✨ {ctx.author.mention} equipou **{AURAS[aura_id]['nome']}**!")
+        await ctx.send(f"{ctx.author.mention} equipou **{AURAS[aura_id]['nome']}**!")
 
     @commands.command(name="auras")
     async def auras(self, ctx: commands.Context):
@@ -285,7 +285,7 @@ class Economia(commands.Cog, name="Economia"):
         for aid in posses:
             marca = " (equipada)" if aid == equipada else ""
             linhas.append(f"• **{AURAS[aid]['nome']}** (`{aid}`){marca}")
-        await ctx.send(f"✨ suas auras:\n" + "\n".join(linhas))
+        await ctx.send("suas auras:\n" + "\n".join(linhas))
 
     # ── >roll ────────────────────────────────────────────────
     @commands.command(name="roll")
@@ -365,7 +365,7 @@ class Economia(commands.Cog, name="Economia"):
         if not ranking:
             await ctx.send(f"{brand.AXOLOTL} ninguém tem diamantes ainda! use `>daily`.")
             return
-        medalhas = ["🥇", "🥈", "🥉"] + [f"**{i}.**" for i in range(4, 11)]
+        medalhas = [f"**{i}.**" for i in range(1, 11)]
         linhas = []
         for i, (uid, dima) in enumerate(ranking):
             membro = ctx.guild.get_member(uid) if ctx.guild else None
@@ -454,7 +454,7 @@ class Economia(commands.Cog, name="Economia"):
         dima, amet, aura = await asyncio.to_thread(database.buscar_saldo, user_id)
         linhas = []
         for aid, info in AURAS.items():
-            dono = "✅" if await asyncio.to_thread(database.tem_aura, user_id, aid) else ""
+            dono = "(sua)" if await asyncio.to_thread(database.tem_aura, user_id, aid) else ""
             equip = " (equipada)" if aura == aid else ""
             linhas.append(
                 f"`{aid}` — **{info['nome']}** — **{info['preco']}** {brand.AMETHYST} {dono}{equip}\n└ {info['desc']}"
@@ -502,7 +502,7 @@ class Economia(commands.Cog, name="Economia"):
         await asyncio.to_thread(database.dar_aura, user_id, aura_id)
         await asyncio.to_thread(database.equipar_aura, user_id, aura_id)
         await interaction.response.send_message(
-            f"{brand.AXOLOTL} você comprou e equipou **{AURAS[aura_id]['nome']}**! ✨"
+            f"{brand.AXOLOTL} você comprou e equipou **{AURAS[aura_id]['nome']}**!"
         )
 
     # ── /aura ────────────────────────────────────────────────
@@ -520,7 +520,7 @@ class Economia(commands.Cog, name="Economia"):
             return
         await asyncio.to_thread(database.equipar_aura, user_id, aura_id)
         await interaction.response.send_message(
-            f"✨ você equipou **{AURAS[aura_id]['nome']}**!"
+            f"você equipou **{AURAS[aura_id]['nome']}**!"
         )
 
     # ── /auras ───────────────────────────────────────────────
@@ -541,7 +541,7 @@ class Economia(commands.Cog, name="Economia"):
             marca = " (equipada)" if aid == equipada else ""
             linhas.append(f"• **{AURAS[aid]['nome']}** (`{aid}`){marca}")
         await interaction.response.send_message(
-            "✨ suas auras:\n" + "\n".join(linhas), ephemeral=True
+            "suas auras:\n" + "\n".join(linhas), ephemeral=True
         )
 
     # ── /colecao ─────────────────────────────────────────────
@@ -582,7 +582,7 @@ class Economia(commands.Cog, name="Economia"):
                 ephemeral=True,
             )
             return
-        medalhas = ["🥇", "🥈", "🥉"] + [f"**{i}.**" for i in range(4, 11)]
+        medalhas = [f"**{i}.**" for i in range(1, 11)]
         linhas = []
         for i, (uid, dima) in enumerate(ranking):
             membro = interaction.guild.get_member(uid) if interaction.guild else None

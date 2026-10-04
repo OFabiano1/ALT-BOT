@@ -17,6 +17,7 @@ import logging
 import os
 
 import discord
+from discord import app_commands
 from discord.ext import commands, tasks
 
 import brand
@@ -141,6 +142,20 @@ class Halloween(commands.Cog, name="Halloween"):
             await ctx.send(
                 "⚠️ a mensagem foi, mas o status da call não atualizou — "
                 "confere se eu tenho a permissão **Voice Channel Status** na call."
+            )
+
+    # ── /halloween ─────────────────────────────────────────
+    @app_commands.command(name="halloween", description="Countdown pro halloween + atualiza a call.")
+    async def halloween_slash(self, interaction: discord.Interaction):
+        """Versão slash do >halloween."""
+        hoje = datetime.datetime.now(TZ).date()
+        dias = dias_faltando(hoje)
+        await interaction.response.send_message(texto_mensagem(dias))
+        if VOICE_CHANNEL_ID and not await self._atualizar_status(dias):
+            await interaction.followup.send(
+                "⚠️ a mensagem foi, mas o status da call não atualizou — "
+                "confere se eu tenho a permissão **Voice Channel Status** na call.",
+                ephemeral=True,
             )
 
     def cog_unload(self):

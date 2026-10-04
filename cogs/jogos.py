@@ -218,6 +218,58 @@ class Jogos(commands.Cog, name="jogos"):
         embed.set_footer(text=brand.FOOTER)
         await ctx.send(embed=embed)
 
+    # ── /placar ──────────────────────────────────────────────
+    @app_commands.command(name="placar", description="Veja seu placar de Pedra, Tesoura e Papel.")
+    async def placar_slash(self, interaction: discord.Interaction):
+        """Versão slash do >placar."""
+        v, d, e = await asyncio.to_thread(database.buscar_ptp, interaction.user.id)
+        if v + d + e == 0:
+            await interaction.response.send_message(
+                f"{brand.AXOLOTL} você ainda não jogou nada! Use `/ptp` para começar.",
+                ephemeral=True,
+            )
+            return
+
+        total = v + d + e
+        pct = round(v / total * 100)
+
+        embed = discord.Embed(
+            title=f"📊 Placar de {interaction.user.display_name}",
+            color=brand.PRIMARY,
+        )
+        embed.add_field(name="✅ vitórias", value=str(v), inline=True)
+        embed.add_field(name="❌ derrotas", value=str(d), inline=True)
+        embed.add_field(name="⚖️ empates", value=str(e), inline=True)
+        embed.add_field(name="🎯 taxa de vitória", value=f"{pct}%", inline=False)
+        embed.set_footer(text=brand.FOOTER)
+        await interaction.response.send_message(embed=embed)
+
+    # ── /ranking ─────────────────────────────────────────────
+    @app_commands.command(name="ranking", description="Veja o top 5 jogadores do servidor.")
+    async def ranking_slash(self, interaction: discord.Interaction):
+        """Versão slash do >ranking."""
+        ranking = await asyncio.to_thread(database.top_ptp, 5)
+        if not ranking:
+            await interaction.response.send_message(
+                f"{brand.AXOLOTL} ninguém jogou ainda! seja o primeiro com `/ptp`.",
+                ephemeral=True,
+            )
+            return
+
+        linhas = []
+        for i, (user_id, v, d, e) in enumerate(ranking):
+            membro = interaction.guild.get_member(user_id) if interaction.guild else None
+            nome = membro.display_name if membro else f"usuário {user_id}"
+            linhas.append(f"{MEDALHAS[i]} **{nome}** — {v}V {d}D {e}E")
+
+        embed = discord.Embed(
+            title="🏆 Ranking — Top 5 Jogadores",
+            description="\n".join(linhas),
+            color=brand.WARNING,
+        )
+        embed.set_footer(text=brand.FOOTER)
+        await interaction.response.send_message(embed=embed)
+
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Jogos(bot))

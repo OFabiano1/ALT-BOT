@@ -20,6 +20,7 @@ import re
 import time
 
 import discord
+from discord import app_commands
 from discord.ext import commands
 
 import brand
@@ -287,6 +288,37 @@ class Mudae(commands.Cog, name="Mudae"):
         self.pendentes.pop(ctx.author.id, None)
         await asyncio.to_thread(database.remover_mudae, ctx.author.id)
         await ctx.send(f"{brand.AXOLOTL} reminder cancelado!")
+
+    # ── /mudae ───────────────────────────────────────────────
+    @app_commands.command(name="mudae", description="Agenda aviso manual dos rolls do Mudae.")
+    @app_commands.describe(minutos="em quantos minutos te marco (1–180)")
+    async def mudae_slash(self, interaction: discord.Interaction, minutos: int):
+        """Versão slash do >mudae."""
+        if minutos <= 0 or minutos > MAX_MINUTOS:
+            await interaction.response.send_message(
+                f"{brand.AXOLOTL} usa 1–{MAX_MINUTOS} minutos. "
+                f"o auto-reminder já pega seus `$m`/`$wa` sozinho.",
+                ephemeral=True,
+            )
+            return
+        guild_id = interaction.guild.id if interaction.guild else 0
+        await self.agendar(interaction.user.id, interaction.channel.id, guild_id, minutos)
+        await interaction.response.send_message(
+            f"{brand.AXOLOTL} te marco em **{minutos} min**! 🎲", ephemeral=True
+        )
+
+    # ── /mudae_stop ─────────────────────────────────────────
+    @app_commands.command(name="mudae_stop", description="Cancela seu reminder do Mudae.")
+    async def mudae_stop_slash(self, interaction: discord.Interaction):
+        """Versão slash do >mudae_stop."""
+        tarefa = self.timers.pop(interaction.user.id, None)
+        if tarefa and not tarefa.done():
+            tarefa.cancel()
+        self.pendentes.pop(interaction.user.id, None)
+        await asyncio.to_thread(database.remover_mudae, interaction.user.id)
+        await interaction.response.send_message(
+            f"{brand.AXOLOTL} reminder cancelado!", ephemeral=True
+        )
 
     def cog_unload(self):
         for t in self.timers.values():

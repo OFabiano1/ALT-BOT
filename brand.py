@@ -61,4 +61,5 @@ CATEGORIAS = {
     "Status ":   "📡 Status",
     "Economia":  "💎 Economia",
     "Mudae":     "🎲 Mudae",
+    "Halloween": "🎃 Halloween",
 }

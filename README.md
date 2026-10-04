@@ -12,9 +12,11 @@ o bot oficial da **axolotl br** — sua comunidade na internet. de player pra pl
 | economia | `>saldo` `>daily` `>pay` `>loja` `>buy` `>roll` `>colecao` `>topdima` |
 | mudae | auto-reminder `$m`/`$wa`/`$ha`... + `>mudae <min>` `>mudae_stop` |
 | tickets | `>setupticket` `>fecharticket` `>addticket` |
-| extras | responde `w`, status rotativo |
+| extras | responde `w`, status rotativo, `>halloween` (countdown + status da call) |
 
 admin: `>restart`, `>setxp`, `>dar`.
+
+todos os comandos `>` têm gêmeo `/` com o mesmo nome.
 
 ---
 

@@ -50,6 +50,11 @@ COR_RAR = {
     "lendário": brand.WARNING,
 }
 
+# Opções de aura pros slash (nome bonito -> id).
+_ESCOLHAS_AURA = [
+    app_commands.Choice(name=info["nome"], value=aid) for aid, info in AURAS.items()
+]
+
 
 def _sortear_axolotl() -> str:
     ids = list(AXOLOTLS)
@@ -373,6 +378,223 @@ class Economia(commands.Cog, name="Economia"):
         )
         embed.set_footer(text=brand.FOOTER)
         await ctx.send(embed=embed)
+
+    # ── /pay ─────────────────────────────────────────────────
+    @app_commands.command(name="pay", description="Transfira diamantes pra outro membro.")
+    @app_commands.describe(membro="quem recebe", qtd="quantidade (mínimo 1)")
+    async def pay_slash(
+        self, interaction: discord.Interaction, membro: discord.Member, qtd: int
+    ):
+        """Versão slash do >pay."""
+        autor = interaction.user
+        if qtd <= 0:
+            await interaction.response.send_message(
+                f"{brand.AXOLOTL} a quantia mínima é 1.", ephemeral=True
+            )
+            return
+        if membro.bot:
+            await interaction.response.send_message(
+                f"{brand.AXOLOTL} não dá pra pagar pra bot.", ephemeral=True
+            )
+            return
+        if membro.id == autor.id:
+            await interaction.response.send_message(
+                f"{brand.AXOLOTL} não dá pra pagar pra você mesmo.", ephemeral=True
+            )
+            return
+        ok, _, _ = await asyncio.to_thread(
+            database.transferir_diamantes, autor.id, membro.id, qtd
+        )
+        if not ok:
+            await interaction.response.send_message(
+                f"{brand.AXOLOTL} saldo insuficiente!", ephemeral=True
+            )
+            return
+        await interaction.response.send_message(
+            f"{brand.DIAMANTE} {autor.mention} enviou **{qtd}** diamantes pra {membro.mention}!"
+        )
+
+    # ── /dar (admin) ─────────────────────────────────────────
+    @app_commands.command(name="dar", description="[Admin] Dá moedas pra um membro.")
+    @app_commands.checks.has_permissions(administrator=True)
+    @app_commands.describe(membro="quem recebe", moeda="qual moeda", qtd="quantidade")
+    @app_commands.choices(moeda=[
+        app_commands.Choice(name="diamantes", value="diamantes"),
+        app_commands.Choice(name="ametista", value="ametista"),
+    ])
+    async def dar_slash(
+        self,
+        interaction: discord.Interaction,
+        membro: discord.Member,
+        moeda: str,
+        qtd: int,
+    ):
+        """Versão slash do >dar."""
+        if qtd <= 0:
+            await interaction.response.send_message(
+                f"{brand.AXOLOTL} a quantia mínima é 1.", ephemeral=True
+            )
+            return
+        if moeda == "diamantes":
+            total = await asyncio.to_thread(database.adicionar_diamantes, membro.id, qtd)
+            await interaction.response.send_message(
+                f"{brand.DIAMANTE} {membro.mention} recebeu **{qtd}** diamantes! (total: **{total}**)"
+            )
+        else:
+            total = await asyncio.to_thread(database.adicionar_ametista, membro.id, qtd)
+            await interaction.response.send_message(
+                f"{brand.AMETHYST} {membro.mention} recebeu **{qtd}** ametista! (total: **{total}**)"
+            )
+
+    # ── /loja ────────────────────────────────────────────────
+    @app_commands.command(name="loja", description="Mostra as auras à venda e o giro de axolotl.")
+    async def loja_slash(self, interaction: discord.Interaction):
+        """Versão slash do >loja."""
+        user_id = interaction.user.id
+        dima, amet, aura = await asyncio.to_thread(database.buscar_saldo, user_id)
+        linhas = []
+        for aid, info in AURAS.items():
+            dono = "✅" if await asyncio.to_thread(database.tem_aura, user_id, aid) else ""
+            equip = " (equipada)" if aura == aid else ""
+            linhas.append(
+                f"`{aid}` — **{info['nome']}** — **{info['preco']}** {brand.AMETHYST} {dono}{equip}\n└ {info['desc']}"
+            )
+        embed = discord.Embed(
+            title=f"{brand.AXOLOTL} loja do lago",
+            description="\n\n".join(linhas),
+            color=brand.PRIMARY,
+        )
+        embed.add_field(
+            name=f"{brand.AXOLOTL} giro de axolotl",
+            value=f"`/roll` — **{ROLL_CUSTO}** {brand.AMETHYST} por giro. sorteia 1 dos 7 axolotls.",
+            inline=False,
+        )
+        embed.add_field(
+            name="seu saldo",
+            value=f"**{dima}** {brand.DIAMANTE} • **{amet}** {brand.AMETHYST}",
+            inline=False,
+        )
+        embed.set_footer(text=f"/buy compra aura • /aura equipa • {brand.FOOTER}")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    # ── /buy ─────────────────────────────────────────────────
+    @app_commands.command(name="buy", description="Compra uma aura com ametista.")
+    @app_commands.describe(aura_id="qual aura comprar")
+    @app_commands.choices(aura_id=_ESCOLHAS_AURA)
+    async def buy_slash(self, interaction: discord.Interaction, aura_id: str):
+        """Versão slash do >buy."""
+        user_id = interaction.user.id
+        if await asyncio.to_thread(database.tem_aura, user_id, aura_id):
+            await interaction.response.send_message(
+                f"{brand.AXOLOTL} você já tem essa aura! equipe com `/aura`.",
+                ephemeral=True,
+            )
+            return
+        _, amet, _ = await asyncio.to_thread(database.buscar_saldo, user_id)
+        preco = AURAS[aura_id]["preco"]
+        if amet < preco:
+            await interaction.response.send_message(
+                f"{brand.AMETHYST} faltam **{preco - amet}** ametista pra **{AURAS[aura_id]['nome']}**!",
+                ephemeral=True,
+            )
+            return
+        await asyncio.to_thread(database.adicionar_ametista, user_id, -preco)
+        await asyncio.to_thread(database.dar_aura, user_id, aura_id)
+        await asyncio.to_thread(database.equipar_aura, user_id, aura_id)
+        await interaction.response.send_message(
+            f"{brand.AXOLOTL} você comprou e equipou **{AURAS[aura_id]['nome']}**! ✨"
+        )
+
+    # ── /aura ────────────────────────────────────────────────
+    @app_commands.command(name="aura", description="Equipa uma aura que você já tem.")
+    @app_commands.describe(aura_id="qual aura equipar")
+    @app_commands.choices(aura_id=_ESCOLHAS_AURA)
+    async def aura_slash(self, interaction: discord.Interaction, aura_id: str):
+        """Versão slash do >aura."""
+        user_id = interaction.user.id
+        if not await asyncio.to_thread(database.tem_aura, user_id, aura_id):
+            await interaction.response.send_message(
+                f"{brand.AXOLOTL} você ainda não tem essa aura! compre com `/buy`.",
+                ephemeral=True,
+            )
+            return
+        await asyncio.to_thread(database.equipar_aura, user_id, aura_id)
+        await interaction.response.send_message(
+            f"✨ você equipou **{AURAS[aura_id]['nome']}**!"
+        )
+
+    # ── /auras ───────────────────────────────────────────────
+    @app_commands.command(name="auras", description="Lista as auras que você possui.")
+    async def auras_slash(self, interaction: discord.Interaction):
+        """Versão slash do >auras."""
+        user_id = interaction.user.id
+        _, _, equipada = await asyncio.to_thread(database.buscar_saldo, user_id)
+        posses = await asyncio.to_thread(database.auras_usuario, user_id)
+        if not posses:
+            await interaction.response.send_message(
+                f"{brand.AXOLOTL} você ainda não tem auras! veja com `/loja`.",
+                ephemeral=True,
+            )
+            return
+        linhas = []
+        for aid in posses:
+            marca = " (equipada)" if aid == equipada else ""
+            linhas.append(f"• **{AURAS[aid]['nome']}** (`{aid}`){marca}")
+        await interaction.response.send_message(
+            "✨ suas auras:\n" + "\n".join(linhas), ephemeral=True
+        )
+
+    # ── /colecao ─────────────────────────────────────────────
+    @app_commands.command(name="colecao", description="Mostra a coleção de axolotls.")
+    @app_commands.describe(membro="ver a coleção de outro membro (opcional)")
+    async def colecao_slash(
+        self, interaction: discord.Interaction, membro: discord.Member | None = None
+    ):
+        """Versão slash do >colecao."""
+        membro = membro or interaction.user
+        itens = await asyncio.to_thread(database.buscar_colecao, membro.id)
+        if not itens:
+            await interaction.response.send_message(
+                f"{brand.AXOLOTL} {membro.display_name} ainda não tem axolotls! use `/roll`.",
+                ephemeral=True,
+            )
+            return
+        linhas = []
+        for aid, qtd in itens:
+            info = AXOLOTLS.get(aid, {"nome": aid, "rar": "?"})
+            linhas.append(f"• **{info['nome']}** ({info['rar']}) — **{qtd}x**")
+        embed = discord.Embed(
+            title=f"{brand.AXOLOTL} coleção de {membro.display_name}",
+            description="\n".join(linhas),
+            color=brand.PRIMARY,
+        )
+        embed.set_footer(text=f"{len(itens)}/{len(AXOLOTLS)} espécies • {brand.FOOTER}")
+        await interaction.response.send_message(embed=embed)
+
+    # ── /topdima ─────────────────────────────────────────────
+    @app_commands.command(name="topdima", description="Ranking dos mais ricos em diamantes.")
+    async def topdima_slash(self, interaction: discord.Interaction):
+        """Versão slash do >topdima."""
+        ranking = await asyncio.to_thread(database.top_diamantes, 10)
+        if not ranking:
+            await interaction.response.send_message(
+                f"{brand.AXOLOTL} ninguém tem diamantes ainda! use `/daily`.",
+                ephemeral=True,
+            )
+            return
+        medalhas = ["🥇", "🥈", "🥉"] + [f"**{i}.**" for i in range(4, 11)]
+        linhas = []
+        for i, (uid, dima) in enumerate(ranking):
+            membro = interaction.guild.get_member(uid) if interaction.guild else None
+            nome = membro.display_name if membro else f"usuário {uid}"
+            linhas.append(f"{medalhas[i]} {nome} — **{dima}** {brand.DIAMANTE}")
+        embed = discord.Embed(
+            title=f"{brand.DIAMANTE} top diamantes",
+            description="\n".join(linhas),
+            color=brand.WARNING,
+        )
+        embed.set_footer(text=brand.FOOTER)
+        await interaction.response.send_message(embed=embed)
 
 
 async def setup(bot: commands.Bot):

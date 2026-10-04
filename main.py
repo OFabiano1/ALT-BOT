@@ -66,6 +66,56 @@ async def on_ready():
 
     log.info("%s online — %s", bot.user, visual.FOOTER)
 
+    # volta pras calls fixadas (sobrevive a restart e queda).
+    for guild in bot.guilds:
+        canal_id = await asyncio.to_thread(data.voz_fixa, guild.id)
+        if canal_id is not None and guild.voice_client is None:
+            try:
+                canal = guild.get_channel(canal_id)
+                if canal is None:
+                    canal = await bot.fetch_channel(canal_id)
+                await canal.connect()
+                log.info("voltei pra call fixada %d", canal_id)
+            except Exception:
+                log.exception("nao consegui voltar pra call fixada %d", canal_id)
+
+
+async def _voltar_call(guild_id: int, channel_id: int, tentativas: int = 3):
+    # espera um pouco pra nao brigar com queda rapida seguida.
+    await asyncio.sleep(5)
+    for _ in range(tentativas):
+        guild = bot.get_guild(guild_id)
+        if guild is None or guild.voice_client is not None:
+            return
+        try:
+            canal = guild.get_channel(channel_id)
+            if canal is None:
+                canal = await bot.fetch_channel(channel_id)
+            await canal.connect()
+            log.info("voltei pra call fixada %d", channel_id)
+            return
+        except (discord.NotFound, discord.Forbidden):
+            # call sumiu ou perdi acesso: desfixa pra nao tentar pra sempre.
+            await asyncio.to_thread(data.soltar_voz, guild_id)
+            return
+        except Exception:
+            log.exception("falha ao voltar pra call, tento de novo")
+            await asyncio.sleep(10)
+
+
+@bot.event
+async def on_voice_state_update(membro, antes, depois):
+    # so interessa a queda do proprio bot.
+    if bot.user is None or membro.id != bot.user.id:
+        return
+    if depois.channel is not None or antes.channel is None:
+        return
+    canal_id = await asyncio.to_thread(data.voz_fixa, membro.guild.id)
+    if canal_id is None:
+        return
+    log.info("cai da call, voltando pra fixada %d", canal_id)
+    asyncio.create_task(_voltar_call(membro.guild.id, canal_id))
+
 
 @bot.event
 async def on_command_error(ctx: commands.Context, erro: commands.CommandError):
@@ -263,10 +313,12 @@ async def call(ctx):
 
         if ctx.voice_client is not None:
             await ctx.voice_client.move_to(canal)
+            await asyncio.to_thread(data.fixar_voz, ctx.guild.id, canal.id)
             await ctx.send(f"fui pra **{canal.name}**!")
             return
 
         await canal.connect()
+        await asyncio.to_thread(data.fixar_voz, ctx.guild.id, canal.id)
         await ctx.send(f"tô na call **{canal.name}**!")
     except Exception as erro:
         log.exception("falha ao entrar na call")
@@ -301,6 +353,7 @@ async def call_slash(interaction: discord.Interaction):
             await vc.move_to(canal)
         else:
             await canal.connect()
+        await asyncio.to_thread(data.fixar_voz, interaction.guild.id, canal.id)
         await interaction.response.send_message(f"tô na call **{canal.name}**!")
     except Exception as erro:
         log.exception("falha ao entrar na call (slash)")
@@ -322,6 +375,7 @@ async def sair(ctx):
     if vc is None:
         await ctx.send("não estou em call")
         return
+    await asyncio.to_thread(data.soltar_voz, ctx.guild.id)
     await vc.disconnect()
     await ctx.send("saí da call!")
 
@@ -333,6 +387,7 @@ async def sair_slash(interaction: discord.Interaction):
     if vc is None:
         await interaction.response.send_message("não estou em call", ephemeral=True)
         return
+    await asyncio.to_thread(data.soltar_voz, interaction.guild.id)
     await vc.disconnect()
     await interaction.response.send_message("saí da call!")
 

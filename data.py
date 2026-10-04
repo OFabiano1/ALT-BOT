@@ -61,6 +61,11 @@ CREATE TABLE IF NOT EXISTS mudae_reminder (
     guild_id   INTEGER NOT NULL DEFAULT 0,
     expires_at REAL NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS voz_fixa (
+    guild_id   INTEGER PRIMARY KEY,
+    channel_id INTEGER NOT NULL
+);
 """
 
 
@@ -403,6 +408,34 @@ def listar_mudae() -> list[tuple[int, int, int, float]]:
             "SELECT user_id, channel_id, guild_id, expires_at FROM mudae_reminder"
         ).fetchall()
     return [(r["user_id"], r["channel_id"], r["guild_id"], r["expires_at"]) for r in rows]
+
+
+# ─── voz fixa ───
+def fixar_voz(guild_id: int, channel_id: int) -> None:
+    """marca a call pra ficar. sobrevivem restart e queda."""
+    with _lock, _conectar() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute(
+            "INSERT INTO voz_fixa (guild_id, channel_id) VALUES (?, ?) "
+            "ON CONFLICT(guild_id) DO UPDATE SET channel_id = excluded.channel_id",
+            (guild_id, channel_id),
+        )
+
+
+def soltar_voz(guild_id: int) -> None:
+    """desmarca a call. so o >sair chama isso."""
+    with _lock, _conectar() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute("DELETE FROM voz_fixa WHERE guild_id = ?", (guild_id,))
+
+
+def voz_fixa(guild_id: int) -> int | None:
+    """devolve a call fixada ou None."""
+    with _lock, _conectar() as conn:
+        row = conn.execute(
+            "SELECT channel_id FROM voz_fixa WHERE guild_id = ?", (guild_id,)
+        ).fetchone()
+    return row["channel_id"] if row else None
 
 
 # ─── migração ───

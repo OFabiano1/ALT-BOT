@@ -12,15 +12,17 @@ except ImportError:
 
 # ─── simbolo ───
 
-# o emoji oficial e o custom `:02:`, vem do env como `<:02:id>`.
-# nunca hardcoda `<:02:...>` no codigo, so via env.
-AXOLOTL = os.getenv("AXOLOTL_EMOJI", "").strip()
+# os customs do servidor, os unicos que o bot usa. o env so
+# sobrescreve se um dia o id mudar, o padrao ja e o certo.
+_AXOLOTL = "<:02:1028808570466213918>"
+AXOLOTL = (os.getenv("AXOLOTL_EMOJI") or _AXOLOTL).strip()
 
 # ─── economia ───
 
-# `:amethyst:` e `:diamond:` tambem sao customs do servidor, via env.
-AMETHYST = os.getenv("AMETHYST_EMOJI", "").strip()
-DIAMANTE = os.getenv("DIAMANTE_EMOJI", "").strip()
+_AMETHYST = "<:amethyst:1554127047666831360>"
+_DIAMANTE = "<:diamond:1554260297789866134>"
+AMETHYST = (os.getenv("AMETHYST_EMOJI") or _AMETHYST).strip()
+DIAMANTE = (os.getenv("DIAMANTE_EMOJI") or _DIAMANTE).strip()
 
 # ─── paleta ───
 

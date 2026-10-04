@@ -24,6 +24,7 @@ COGS = (
     "cogs.tickets",
     "cogs.economia",
     "cogs.mudae",
+    "cogs.halloween",
 )
 
 # Intents mínimos. `members` e `message_content` são privilegiados e

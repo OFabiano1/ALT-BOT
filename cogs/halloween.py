@@ -1,0 +1,130 @@
+"""Countdown diário pro Halloween.
+
+Todo dia às 00:00 (America/Sao_Paulo, UTC-3 fixo — sem DST desde 2019):
+1. manda mensagem no chat de texto configurado.
+2. atualiza o voice channel status da call via
+   PUT /channels/{id}/voice-status
+   (`bot.http.edit_voice_channel_status` — discord.py 2.x não expõe
+   wrapper de alto nível, só o HTTP).
+
+Se o voice-status falhar (403 sem permissão SET_VOICE_CHANNEL_STATUS,
+canal não é voz, etc.), loga e segue — a mensagem diária continua.
+Nunca derruba o loop por causa do status.
+"""
+
+import datetime
+import logging
+import os
+
+import discord
+from discord.ext import commands, tasks
+
+import brand
+
+log = logging.getLogger("alt.halloween")
+
+TEXT_CHANNEL_ID = int(os.getenv("HALLOWEEN_TEXT_CHANNEL_ID", "1058335767274995752") or 0)
+VOICE_CHANNEL_ID = int(os.getenv("HALLOWEEN_VOICE_CHANNEL_ID", "1310398751575113758") or 0)
+
+# UTC-3 fixo. ZoneInfo("America/Sao_Paulo") precisaria do pacote `tzdata`
+# no Windows — sem DST desde 2019, o offset fixo é equivalente e sem dep nova.
+TZ = datetime.timezone(datetime.timedelta(hours=-3), name="America/Sao_Paulo")
+MEIA_NOITE = datetime.time(hour=0, minute=0, tzinfo=TZ)
+
+
+def proximo_halloween(hoje: datetime.date) -> datetime.date:
+    """31/out deste ano, ou do ano que vem se já passou."""
+    ano = hoje.year
+    alvo = datetime.date(ano, 10, 31)
+    if hoje > alvo:
+        alvo = datetime.date(ano + 1, 10, 31)
+    return alvo
+
+
+def dias_faltando(hoje: datetime.date) -> int:
+    return (proximo_halloween(hoje) - hoje).days
+
+
+def texto_status(dias: int) -> str:
+    if dias == 0:
+        return "🎃 feliz halloween! é hoje!"
+    if dias == 1:
+        return "🎃 é amanhã! falta 1 dia pro halloween"
+    return f"🎃 faltam {dias} dias pro halloween"
+
+
+def texto_mensagem(dias: int) -> str:
+    if dias == 0:
+        return f"{brand.AXOLOTL} 🎃 É HOJE! feliz halloween, galera!"
+    if dias == 1:
+        return f"{brand.AXOLOTL} 🎃 é amanhã! falta **1 dia** pro halloween... preparem as fantasias."
+    return f"{brand.AXOLOTL} 🎃 faltam **{dias} dias** pro halloween!"
+
+
+class Halloween(commands.Cog, name="Halloween"):
+    """Mensagem diária + status da call com o countdown."""
+
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
+        if not TEXT_CHANNEL_ID or not VOICE_CHANNEL_ID:
+            log.warning(
+                "HALLOWEEN_TEXT/VOICE_CHANNEL_ID nao definidos — countdown inativo"
+            )
+
+    @commands.Cog.listener()
+    async def on_ready(self):
+        if not self.countdown.is_running():
+            self.countdown.start()
+            log.info("halloween: loop diario 00:00 iniciado")
+
+    @tasks.loop(time=MEIA_NOITE)
+    async def countdown(self):
+        hoje = datetime.datetime.now(TZ).date()
+        dias = dias_faltando(hoje)
+        log.info("halloween: %d dia(s) faltando (%s)", dias, hoje.isoformat())
+
+        # 1. mensagem no chat
+        if TEXT_CHANNEL_ID:
+            try:
+                canal = self.bot.get_channel(TEXT_CHANNEL_ID)
+                if canal is None:
+                    canal = await self.bot.fetch_channel(TEXT_CHANNEL_ID)
+                embed = discord.Embed(
+                    title="🎃 countdown pro halloween",
+                    description=texto_mensagem(dias),
+                    color=brand.WARNING,
+                )
+                embed.set_footer(text=brand.FOOTER)
+                await canal.send(embed=embed)
+            except Exception:
+                log.exception("halloween: falha ao enviar mensagem diaria")
+
+        # 2. status da call (voice channel status, não é o nome do canal)
+        if VOICE_CHANNEL_ID:
+            try:
+                await self.bot.http.edit_voice_channel_status(
+                    texto_status(dias),
+                    channel_id=VOICE_CHANNEL_ID,
+                )
+            except Exception:
+                log.exception("halloween: falha ao atualizar status da call")
+
+    @countdown.before_loop
+    async def before_countdown(self):
+        await self.bot.wait_until_ready()
+
+    # ── >halloween ─────────────────────────────────────────
+    @commands.command(name="halloween")
+    async def halloween(self, ctx: commands.Context):
+        """mostra quantos dias faltam pro halloween."""
+        hoje = datetime.datetime.now(TZ).date()
+        dias = dias_faltando(hoje)
+        await ctx.send(texto_mensagem(dias))
+
+    def cog_unload(self):
+        if self.countdown.is_running():
+            self.countdown.cancel()
+
+
+async def setup(bot: commands.Bot):
+    await bot.add_cog(Halloween(bot))

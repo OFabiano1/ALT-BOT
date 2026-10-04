@@ -77,6 +77,43 @@ class Halloween(commands.Cog, name="Halloween"):
             self.countdown.start()
             log.info("halloween: loop diario 00:00 iniciado")
 
+    async def _enviar_mensagem(self, dias: int) -> bool:
+        """Manda o embed do countdown no chat. True se enviou."""
+        if not TEXT_CHANNEL_ID:
+            return False
+        try:
+            canal = self.bot.get_channel(TEXT_CHANNEL_ID)
+            if canal is None:
+                canal = await self.bot.fetch_channel(TEXT_CHANNEL_ID)
+            embed = discord.Embed(
+                title="🎃 countdown pro halloween",
+                description=texto_mensagem(dias),
+                color=brand.WARNING,
+            )
+            embed.set_footer(text=brand.FOOTER)
+            await canal.send(embed=embed)
+            return True
+        except Exception:
+            log.exception("halloween: falha ao enviar mensagem")
+            return False
+
+    async def _atualizar_status(self, dias: int) -> bool:
+        """Atualiza o voice channel status da call. True se ok.
+
+        Não é o nome do canal — é o status (PUT /voice-status).
+        """
+        if not VOICE_CHANNEL_ID:
+            return False
+        try:
+            await self.bot.http.edit_voice_channel_status(
+                texto_status(dias),
+                channel_id=VOICE_CHANNEL_ID,
+            )
+            return True
+        except Exception:
+            log.exception("halloween: falha ao atualizar status da call")
+            return False
+
     @tasks.loop(time=MEIA_NOITE)
     async def countdown(self):
         hoje = datetime.datetime.now(TZ).date()
@@ -84,30 +121,10 @@ class Halloween(commands.Cog, name="Halloween"):
         log.info("halloween: %d dia(s) faltando (%s)", dias, hoje.isoformat())
 
         # 1. mensagem no chat
-        if TEXT_CHANNEL_ID:
-            try:
-                canal = self.bot.get_channel(TEXT_CHANNEL_ID)
-                if canal is None:
-                    canal = await self.bot.fetch_channel(TEXT_CHANNEL_ID)
-                embed = discord.Embed(
-                    title="🎃 countdown pro halloween",
-                    description=texto_mensagem(dias),
-                    color=brand.WARNING,
-                )
-                embed.set_footer(text=brand.FOOTER)
-                await canal.send(embed=embed)
-            except Exception:
-                log.exception("halloween: falha ao enviar mensagem diaria")
+        await self._enviar_mensagem(dias)
 
-        # 2. status da call (voice channel status, não é o nome do canal)
-        if VOICE_CHANNEL_ID:
-            try:
-                await self.bot.http.edit_voice_channel_status(
-                    texto_status(dias),
-                    channel_id=VOICE_CHANNEL_ID,
-                )
-            except Exception:
-                log.exception("halloween: falha ao atualizar status da call")
+        # 2. status da call
+        await self._atualizar_status(dias)
 
     @countdown.before_loop
     async def before_countdown(self):
@@ -116,10 +133,15 @@ class Halloween(commands.Cog, name="Halloween"):
     # ── >halloween ─────────────────────────────────────────
     @commands.command(name="halloween")
     async def halloween(self, ctx: commands.Context):
-        """mostra quantos dias faltam pro halloween."""
+        """mostra o countdown e atualiza o status da call na hora."""
         hoje = datetime.datetime.now(TZ).date()
         dias = dias_faltando(hoje)
         await ctx.send(texto_mensagem(dias))
+        if VOICE_CHANNEL_ID and not await self._atualizar_status(dias):
+            await ctx.send(
+                "⚠️ a mensagem foi, mas o status da call não atualizou — "
+                "confere se eu tenho a permissão **Voice Channel Status** na call."
+            )
 
     def cog_unload(self):
         if self.countdown.is_running():

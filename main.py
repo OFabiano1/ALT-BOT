@@ -75,7 +75,18 @@ async def on_ready():
 async def on_command_error(ctx: commands.Context, erro: commands.CommandError):
     if isinstance(erro, commands.CommandNotFound):
         return
+    if isinstance(erro, commands.CommandOnCooldown):
+        await ctx.send(f"calma! tenta de novo em **{erro.retry_after:.0f}s**.")
+        return
+    if isinstance(erro, commands.CheckFailure):
+        await ctx.send("sem permissão pra isso!")
+        return
     log.warning("comando %s falhou: %s: %s", ctx.command, type(erro).__name__, erro)
+    # Erro visível no chat — comando que falha em silêncio é indepurável.
+    try:
+        await ctx.send(f"❌ deu ruim: `{type(erro).__name__}`")
+    except discord.DiscordException:
+        pass
 
 
 # hello world
@@ -117,11 +128,14 @@ async def ajuda(ctx):
     async def permissao(cmd: commands.Command) -> str:
         """Rótulo de bloqueio se o autor não puder usar o comando."""
         for check in cmd.checks:
-            if not hasattr(check, "predicate"):
-                continue
+            # `cmd.checks` guarda os predicates nus (sem `.predicate`) —
+            # o getattr cobre os dois formatos.
+            predicate = getattr(check, "predicate", check)
             try:
-                await check(ctx)
+                resultado = await predicate(ctx)
             except commands.CheckFailure:
+                return "🔒 restrito"
+            if resultado is False:
                 return "🔒 restrito"
         return ""
 

@@ -26,6 +26,7 @@ COGS = (
     "cogs.economia",
     "cogs.mudae",
     "cogs.halloween",
+    "cogs.deadlock",
 )
 
 # so liga o minimo: sem `guild_messages` o `>` nem chega,

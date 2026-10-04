@@ -24,6 +24,12 @@ _DIAMANTE = "<:diamond:1554260297789866134>"
 AMETHYST = (os.getenv("AMETHYST_EMOJI") or _AMETHYST).strip()
 DIAMANTE = (os.getenv("DIAMANTE_EMOJI") or _DIAMANTE).strip()
 
+# ─── deadlock ───
+
+# custom do deadlock (o jogo da valve), mesmo esquema dos outros.
+_DEADLOCK = "<:DEADLOCK:1556293610939482167>"
+DEADLOCK = (os.getenv("DEADLOCK_EMOJI") or _DEADLOCK).strip()
+
 # ─── paleta ───
 
 # superficies do dark mode. profundidade vem de camada e borda,
@@ -58,4 +64,5 @@ CATEGORIAS = {
     "Economia":  "Economia",
     "Mudae":     "Mudae",
     "Halloween": "Halloween",
+    "Deadlock":  "Deadlock",
 }

@@ -1,8 +1,15 @@
+# isso aq fica trocando o status do bot (o "jogando..." do perfil).
+
 import discord
 from discord.ext import commands, tasks
 
-# (tipo de atividade, texto do status)
+# ─── rotacao ───
+
+# deadlock (o jogo da valve) roda junto com o resto da comunidade.
+# ver `../AGENTS.md` (regra deadlock): presenca e obrigatoria.
 STATUSES = [
+    ("jogando",    "Deadlock"),
+    ("competindo", "Deadlock"),
     ("jogando",    "no Axolotl SMP"),
     ("jogando",    "Minecraft"),
     ("ouvindo",    "a comunidade"),
@@ -14,7 +21,7 @@ INTERVALO = 30  # segundos
 
 
 class Status(commands.Cog, name="Status"):
-    """Status rotativo do bot."""
+    """status rotativo do bot."""
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot

@@ -1,11 +1,6 @@
-"""Persistência do ALT.
-
-SQLite em modo WAL. Substitui o JSON que era reescrito inteiro a cada
-mensagem — o que gerava escrita concorrente sem lock e custo O(n) por
-mensagem. Aqui cada operação é uma transação atômica e indexada.
-
-O caminho é absoluto para que o app não dependa do diretório atual.
-"""
+# isso aq guarda tudo do bot: xp, placar, grana, colecao, mudae.
+# sqlite em modo wal, cada operacao e uma transacao atomica.
+# caminho absoluto pra nao depender de onde o app foi aberto.
 
 import json
 import sqlite3
@@ -16,12 +11,12 @@ from pathlib import Path
 DB_PATH = Path(__file__).parent / "data" / "alt.db"
 LEGACY_XP = Path(__file__).parent / "data" / "xp.json"
 
-# Serializa acesso dentro do processo. BEGIN IMMEDIATE (abaixo) cuida da
+# serializa acesso dentro do processo. BEGIN IMMEDIATE (abaixo) cuida da
 # atomicidade da transação; este lock evita contenção entre tarefas do
 # mesmo event loop.
 _lock = threading.Lock()
 
-# Coluna de placar para cada resultado. Mapeamento explícito em vez de
+# coluna de placar para cada resultado. Mapeamento explícito em vez de
 # derivar a chave do primeiro caractere da string.
 COLUNA_PTP = {"vitoria": "v", "derrota": "d", "empate": "e"}
 
@@ -75,8 +70,6 @@ def _conectar():
     conn = sqlite3.connect(DB_PATH, timeout=30)
     try:
         conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA synchronous=NORMAL")
         yield conn
         conn.commit()
     except Exception:
@@ -86,13 +79,13 @@ def _conectar():
         conn.close()
 
 
-# ── Níveis ───────────────────────────────────────────────────
+# ─── níveis ───
 def xp_para_proximo(nivel: int) -> int:
     return nivel * 100
 
 
 def buscar_xp(user_id: int) -> tuple[int, int]:
-    """Retorna (xp, nivel). Números neutros para usuário desconhecido."""
+    """retorna (xp, nivel). Números neutros para usuário desconhecido."""
     with _lock, _conectar() as conn:
         row = conn.execute(
             "SELECT xp, nivel FROM xp WHERE user_id = ?", (user_id,)
@@ -101,7 +94,7 @@ def buscar_xp(user_id: int) -> tuple[int, int]:
 
 
 def ganhar_xp(user_id: int, ganho: int) -> tuple[int, int, bool]:
-    """Soma XP e resolve a subida de nível.
+    """soma XP e resolve a subida de nível.
 
     Leitura, cálculo e escrita na mesma transação — é isso que elimina a
     corrupção que o JSON sofria.
@@ -131,7 +124,7 @@ def ganhar_xp(user_id: int, ganho: int) -> tuple[int, int, bool]:
 
 
 def definir_xp(user_id: int, xp: int) -> tuple[int, int]:
-    """Define o XP total acumulado e deriva o nível dele.
+    """define o XP total acumulado e deriva o nível dele.
 
     Retorna (xp, nivel).
     """
@@ -152,7 +145,7 @@ def definir_xp(user_id: int, xp: int) -> tuple[int, int]:
 
 
 def top_xp(limite: int = 10) -> list[tuple[int, int, int]]:
-    """Top N por nível, desempate por XP. Retorna [(user_id, nivel, xp)]."""
+    """top N por nível, desempate por XP. Retorna [(user_id, nivel, xp)]."""
     with _lock, _conectar() as conn:
         rows = conn.execute(
             "SELECT user_id, nivel, xp FROM xp "
@@ -162,9 +155,9 @@ def top_xp(limite: int = 10) -> list[tuple[int, int, int]]:
     return [(r["user_id"], r["nivel"], r["xp"]) for r in rows]
 
 
-# ── Pedra, Tesoura e Papel ───────────────────────────────────
+# ─── pedra, tesoura e papel ───
 def buscar_ptp(user_id: int) -> tuple[int, int, int]:
-    """Retorna (vitorias, derrotas, empates)."""
+    """retorna (vitorias, derrotas, empates)."""
     with _lock, _conectar() as conn:
         row = conn.execute(
             "SELECT v, d, e FROM ptp WHERE user_id = ?", (user_id,)
@@ -173,7 +166,7 @@ def buscar_ptp(user_id: int) -> tuple[int, int, int]:
 
 
 def registrar_ptp(user_id: int, resultado: str) -> tuple[int, int, int]:
-    """Registra uma jogada e devolve o placar atualizado (v, d, e)."""
+    """registra uma jogada e devolve o placar atualizado (v, d, e)."""
     # `coluna` só pode ser uma das três chaves de COLUNA_PTP — o dict é a
     # validação, o valor do usuário nunca entra no SQL.
     coluna = COLUNA_PTP[resultado]
@@ -191,7 +184,7 @@ def registrar_ptp(user_id: int, resultado: str) -> tuple[int, int, int]:
 
 
 def top_ptp(limite: int = 5) -> list[tuple[int, int, int, int]]:
-    """Top N por vitórias. Retorna [(user_id, v, d, e)]."""
+    """top N por vitórias. Retorna [(user_id, v, d, e)]."""
     with _lock, _conectar() as conn:
         rows = conn.execute(
             "SELECT user_id, v, d, e FROM ptp "
@@ -201,9 +194,9 @@ def top_ptp(limite: int = 5) -> list[tuple[int, int, int, int]]:
     return [(r["user_id"], r["v"], r["d"], r["e"]) for r in rows]
 
 
-# ── Economia (diamantes + ametista + aura) ────────────────────
+# ─── economia (diamantes + ametista + aura) ───
 def buscar_saldo(user_id: int) -> tuple[int, int, str | None]:
-    """Retorna (diamantes, ametista, aura_equipadada)."""
+    """retorna (diamantes, ametista, aura_equipadada)."""
     with _lock, _conectar() as conn:
         row = conn.execute(
             "SELECT diamantes, ametista, aura FROM economia WHERE user_id = ?",
@@ -215,7 +208,7 @@ def buscar_saldo(user_id: int) -> tuple[int, int, str | None]:
 
 
 def adicionar_diamantes(user_id: int, qtd: int) -> int:
-    """Soma (ou subtrai se negativo) diamantes. Nunca deixa negativo. Retorna total."""
+    """soma (ou subtrai se negativo) diamantes. Nunca deixa negativo. Retorna total."""
     with _lock, _conectar() as conn:
         conn.execute("BEGIN IMMEDIATE")
         row = conn.execute(
@@ -232,7 +225,7 @@ def adicionar_diamantes(user_id: int, qtd: int) -> int:
 
 
 def adicionar_ametista(user_id: int, qtd: int) -> int:
-    """Soma (ou subtrai se negativo) ametista. Nunca deixa negativo. Retorna total."""
+    """soma (ou subtrai se negativo) ametista. Nunca deixa negativo. Retorna total."""
     with _lock, _conectar() as conn:
         conn.execute("BEGIN IMMEDIATE")
         row = conn.execute(
@@ -249,7 +242,7 @@ def adicionar_ametista(user_id: int, qtd: int) -> int:
 
 
 def transferir_diamantes(origem: int, destino: int, qtd: int) -> tuple[bool, int, int]:
-    """Transfere diamantes entre usuários. Retorna (ok, saldo_origem, saldo_destino)."""
+    """transfere diamantes entre usuários. Retorna (ok, saldo_origem, saldo_destino)."""
     if qtd <= 0 or origem == destino:
         s_o, _, _ = buscar_saldo(origem)
         s_d, _, _ = buscar_saldo(destino)
@@ -284,7 +277,7 @@ def transferir_diamantes(origem: int, destino: int, qtd: int) -> tuple[bool, int
 
 
 def tentar_daily(user_id: int, dima: int, amet: int, hoje: str) -> tuple[bool, int, int]:
-    """Tenta resgatar o daily. Retorna (ok, diamantes, ametista).
+    """tenta resgatar o daily. Retorna (ok, diamantes, ametista).
 
     `hoje` é YYYY-MM-DD em UTC. Se last_daily == hoje, nega.
     """
@@ -309,7 +302,7 @@ def tentar_daily(user_id: int, dima: int, amet: int, hoje: str) -> tuple[bool, i
 
 
 def top_diamantes(limite: int = 10) -> list[tuple[int, int]]:
-    """Top N por diamantes. Retorna [(user_id, diamantes)]."""
+    """top N por diamantes. Retorna [(user_id, diamantes)]."""
     with _lock, _conectar() as conn:
         rows = conn.execute(
             "SELECT user_id, diamantes FROM economia "
@@ -319,7 +312,7 @@ def top_diamantes(limite: int = 10) -> list[tuple[int, int]]:
     return [(r["user_id"], r["diamantes"]) for r in rows]
 
 
-# ── Auras ────────────────────────────────────────────────────
+# ─── auras ───
 def tem_aura(user_id: int, aura_id: str) -> bool:
     with _lock, _conectar() as conn:
         row = conn.execute(
@@ -356,9 +349,9 @@ def equipar_aura(user_id: int, aura_id: str | None) -> None:
         )
 
 
-# ── Coleção de axolotls ──────────────────────────────────────
+# ─── coleção de axolotls ───
 def adicionar_axolotl(user_id: int, axolotl_id: str) -> int:
-    """Incrementa a coleção. Retorna a qtd atual daquele axolotl."""
+    """incrementa a coleção. Retorna a qtd atual daquele axolotl."""
     with _lock, _conectar() as conn:
         conn.execute("BEGIN IMMEDIATE")
         conn.execute(
@@ -374,7 +367,7 @@ def adicionar_axolotl(user_id: int, axolotl_id: str) -> int:
 
 
 def buscar_colecao(user_id: int) -> list[tuple[str, int]]:
-    """Retorna [(axolotl_id, qtd)]."""
+    """retorna [(axolotl_id, qtd)]."""
     with _lock, _conectar() as conn:
         rows = conn.execute(
             "SELECT axolotl_id, qtd FROM colecao WHERE user_id = ? ORDER BY qtd DESC",
@@ -383,9 +376,9 @@ def buscar_colecao(user_id: int) -> list[tuple[str, int]]:
     return [(r["axolotl_id"], r["qtd"]) for r in rows]
 
 
-# ── Mudae reminder ─────────────────────────────────────────
+# ─── mudae reminder ───
 def salvar_mudae(user_id: int, channel_id: int, guild_id: int, expires_at: float) -> None:
-    """Agenda/substitui o reminder. Um ativo por usuário."""
+    """agenda/substitui o reminder. Um ativo por usuário."""
     with _lock, _conectar() as conn:
         conn.execute("BEGIN IMMEDIATE")
         conn.execute(
@@ -404,7 +397,7 @@ def remover_mudae(user_id: int) -> None:
 
 
 def listar_mudae() -> list[tuple[int, int, int, float]]:
-    """Retorna [(user_id, channel_id, guild_id, expires_at)]."""
+    """retorna [(user_id, channel_id, guild_id, expires_at)]."""
     with _lock, _conectar() as conn:
         rows = conn.execute(
             "SELECT user_id, channel_id, guild_id, expires_at FROM mudae_reminder"
@@ -412,9 +405,9 @@ def listar_mudae() -> list[tuple[int, int, int, float]]:
     return [(r["user_id"], r["channel_id"], r["guild_id"], r["expires_at"]) for r in rows]
 
 
-# ── Migração ─────────────────────────────────────────────────
+# ─── migração ───
 def migrar_xp_legado() -> int:
-    """Importa data/xp.json uma única vez, se ele existir.
+    """importa data/xp.json uma única vez, se ele existir.
 
     Sem isso, todo o nível acumulado antes do SQLite seria perdido no
     primeiro deploy. Só roda se a tabela xp estiver vazia.
@@ -457,7 +450,11 @@ def migrar_xp_legado() -> int:
 
 
 def init() -> None:
-    """Cria o schema e migra dados legados. Idempotente."""
+    """cria o schema e migra dados legados. idempotente."""
     with _lock, _conectar() as conn:
         conn.executescript(SCHEMA)
+        # wal e sync persistem no arquivo, configura uma vez so aqui
+        # em vez de repetir em toda conexao (toda msg de xp).
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
     migrar_xp_legado()

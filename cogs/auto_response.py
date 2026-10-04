@@ -6,7 +6,7 @@ from discord.ext import commands
 
 log = logging.getLogger("alt.auto_response")
 
-# O link do CDN do Discord carrega assinatura `ex=`/`hm=` e expira,
+# o link do CDN do Discord carrega assinatura `ex=`/`hm=` e expira,
 # virando 404 depois de um tempo. Configurar por env permite trocar sem
 # deploy. Vazio = repost desativado.
 REPOST_GIF = os.getenv("REPOST_GIF", "")

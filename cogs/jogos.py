@@ -1,27 +1,24 @@
 import asyncio
-import logging
 import random
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 
-import brand
-import database
-
-log = logging.getLogger("alt.jogos")
+import visual
+import data
 
 OPCOES = ["pedra", "tesoura", "papel"]
 
-# Chave: o que o jogador fez.
+# chave: o que o jogador fez.
 VENCE = {
     "pedra":   "tesoura",
     "tesoura": "papel",
     "papel":   "pedra",
 }
 
-# Falas do axolote, indexadas pelo mesmo resultado usado em
-# database.registrar_ptp. Antes a lista de "derrota" era usada quando o
+# falas do axolote, indexadas pelo mesmo resultado usado em
+# data.registrar_ptp. Antes a lista de "derrota" era usada quando o
 # jogador vencia e vice-versa, porque a chave saía do primeiro caractere
 # da string.
 FALAS = {
@@ -35,7 +32,7 @@ FALAS = {
         "eu sabia. você não tinha chance.",
         "essa foi de manual.",
         "treinei dez mil rodadas pra esse momento.",
-        f"{brand.AXOLOTL} o axolote dominou. sem discussão.",
+        f"{visual.AXOLOTL} o axolote dominou. sem discussão.",
     ],
     "empate": [
         "mesma energia. respeitei.",
@@ -46,9 +43,9 @@ FALAS = {
 }
 
 CORES = {
-    "vitoria": brand.SUCCESS,
-    "derrota": brand.ERROR,
-    "empate":  brand.WARNING,
+    "vitoria": visual.SUCCESS,
+    "derrota": visual.ERROR,
+    "empate":  visual.WARNING,
 }
 
 TITULOS = {
@@ -59,12 +56,12 @@ TITULOS = {
 
 MEDALHAS = ["1.", "2.", "3.", "4.", "5."]
 
-# Recompensa em diamantes por resultado do ptp.
+# recompensa em diamantes por resultado do ptp.
 PTP_DIAMANTES = {"vitoria": 20, "empate": 5, "derrota": 0}
 
 
 def _jogada(usuario: int, escolha: str, jogada_bot: str) -> str:
-    """Traduz as duas escolhas no resultado do jogador."""
+    """traduz as duas escolhas no resultado do jogador."""
     if escolha == jogada_bot:
         return "empate"
     return "vitoria" if VENCE[escolha] == jogada_bot else "derrota"
@@ -75,9 +72,9 @@ class Jogos(commands.Cog, name="jogos"):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    # ── Lógica interna ───────────────────────────────────────
+    # ─── lógica interna ───
     def _resolver(self, escolha: str | None, jogador) -> discord.Embed | None:
-        """Resolve a jogada e devolve o embed. None se a escolha for inválida."""
+        """resolve a jogada e devolve o embed. None se a escolha for inválida."""
         if escolha is None or escolha.lower() not in OPCOES:
             return None
 
@@ -109,38 +106,38 @@ class Jogos(commands.Cog, name="jogos"):
         )
         embed.add_field(name="", value="", inline=True)
         embed.add_field(
-            name=f"{brand.AXOLOTL} diz:",
+            name=f"{visual.AXOLOTL} diz:",
             value=random.choice(FALAS[dados["resultado"]]),
             inline=False,
         )
-        extra = f"  •  +{recompensa} {brand.DIAMANTE}" if recompensa else ""
-        embed.set_footer(text=f"seu placar: {v}V {d}D {e}E{extra}  •  use >placar • {brand.FOOTER}")
+        extra = f"  •  +{recompensa} {visual.DIAMANTE}" if recompensa else ""
+        embed.set_footer(text=f"seu placar: {v}V {d}D {e}E{extra}  •  use >placar • {visual.FOOTER}")
         return embed
 
-    # ── >ptp ─────────────────────────────────────────────────
+    # ─── >ptp ───
     @commands.command(name="ptp")
     async def ptp_prefix(self, ctx: commands.Context, escolha: str | None = None):
-        """Joga Pedra, Tesoura e Papel contra o Axolotl."""
+        """joga Pedra, Tesoura e Papel contra o Axolotl."""
         dados = self._resolver(escolha, ctx.author)
         if dados is None:
             await ctx.send(
-                f"{brand.AXOLOTL} escolha inválida seu baitola! "
+                f"{visual.AXOLOTL} escolha inválida seu baitola! "
                 f"Use: `>ptp pedra`, `>ptp tesoura` ou `>ptp papel`"
             )
             return
 
         placar = await asyncio.to_thread(
-            database.registrar_ptp, ctx.author.id, dados["resultado"]
+            data.registrar_ptp, ctx.author.id, dados["resultado"]
         )
         recompensa = PTP_DIAMANTES.get(dados["resultado"], 0)
         if recompensa:
             await asyncio.to_thread(
-                database.adicionar_diamantes, ctx.author.id, recompensa
+                data.adicionar_diamantes, ctx.author.id, recompensa
             )
         await ctx.send(embed=self._montar_embed(dados, placar, recompensa))
 
-    # ── /ptp (slash) ─────────────────────────────────────────
-    @app_commands.command(name="ptp", description="Jogue Pedra, Tesoura e Papel contra o ALT!")
+    # ─── /ptp (slash) ───
+    @app_commands.command(name="ptp", description="jogue Pedra, Tesoura e Papel contra o ALT!")
     @app_commands.describe(escolha="sua jogada: pedra, tesoura ou papel")
     @app_commands.choices(escolha=[
         app_commands.Choice(name="pedra", value="pedra"),
@@ -151,29 +148,29 @@ class Jogos(commands.Cog, name="jogos"):
         dados = self._resolver(escolha, interaction.user)
         if dados is None:
             await interaction.response.send_message(
-                f"{brand.AXOLOTL} escolha inválida seu baitola!",
+                f"{visual.AXOLOTL} escolha inválida seu baitola!",
                 ephemeral=True,
             )
             return
 
         placar = await asyncio.to_thread(
-            database.registrar_ptp, interaction.user.id, dados["resultado"]
+            data.registrar_ptp, interaction.user.id, dados["resultado"]
         )
         recompensa = PTP_DIAMANTES.get(dados["resultado"], 0)
         if recompensa:
             await asyncio.to_thread(
-                database.adicionar_diamantes, interaction.user.id, recompensa
+                data.adicionar_diamantes, interaction.user.id, recompensa
             )
         await interaction.response.send_message(embed=self._montar_embed(dados, placar, recompensa))
 
-    # ── >placar ──────────────────────────────────────────────
+    # ─── >placar ───
     @commands.command(name="placar")
     async def ver_placar(self, ctx: commands.Context):
-        """Veja seu placar de Pedra, Tesoura e Papel."""
-        v, d, e = await asyncio.to_thread(database.buscar_ptp, ctx.author.id)
+        """veja seu placar de Pedra, Tesoura e Papel."""
+        v, d, e = await asyncio.to_thread(data.buscar_ptp, ctx.author.id)
         if v + d + e == 0:
             await ctx.send(
-                f"{brand.AXOLOTL} {ctx.author.mention} você ainda não jogou nada! "
+                f"{visual.AXOLOTL} {ctx.author.mention} você ainda não jogou nada! "
                 f"Use `>ptp` para começar."
             )
             return
@@ -183,23 +180,23 @@ class Jogos(commands.Cog, name="jogos"):
 
         embed = discord.Embed(
             title=f"Placar de {ctx.author.display_name}",
-            color=brand.PRIMARY,
+            color=visual.PRIMARY,
         )
         embed.add_field(name="vitórias", value=str(v), inline=True)
         embed.add_field(name="derrotas", value=str(d), inline=True)
         embed.add_field(name="empates", value=str(e), inline=True)
         embed.add_field(name="taxa de vitória", value=f"{pct}%", inline=False)
-        embed.set_footer(text=brand.FOOTER)
+        embed.set_footer(text=visual.FOOTER)
         await ctx.send(embed=embed)
 
-    # ── >ranking ─────────────────────────────────────────────
+    # ─── >ranking ───
     @commands.command(name="ranking")
     async def ranking(self, ctx: commands.Context):
-        """Veja o top 5 jogadores do servidor."""
-        ranking = await asyncio.to_thread(database.top_ptp, 5)
+        """veja o top 5 jogadores do servidor."""
+        ranking = await asyncio.to_thread(data.top_ptp, 5)
         if not ranking:
             await ctx.send(
-                f"{brand.AXOLOTL} ninguém jogou ainda! seja o primeiro com `>ptp`."
+                f"{visual.AXOLOTL} ninguém jogou ainda! seja o primeiro com `>ptp`."
             )
             return
 
@@ -212,19 +209,19 @@ class Jogos(commands.Cog, name="jogos"):
         embed = discord.Embed(
             title="Ranking — Top 5 Jogadores",
             description="\n".join(linhas),
-            color=brand.WARNING,
+            color=visual.WARNING,
         )
-        embed.set_footer(text=brand.FOOTER)
+        embed.set_footer(text=visual.FOOTER)
         await ctx.send(embed=embed)
 
-    # ── /placar ──────────────────────────────────────────────
-    @app_commands.command(name="placar", description="Veja seu placar de Pedra, Tesoura e Papel.")
+    # ─── /placar ───
+    @app_commands.command(name="placar", description="veja seu placar de Pedra, Tesoura e Papel.")
     async def placar_slash(self, interaction: discord.Interaction):
-        """Versão slash do >placar."""
-        v, d, e = await asyncio.to_thread(database.buscar_ptp, interaction.user.id)
+        """versão slash do >placar."""
+        v, d, e = await asyncio.to_thread(data.buscar_ptp, interaction.user.id)
         if v + d + e == 0:
             await interaction.response.send_message(
-                f"{brand.AXOLOTL} você ainda não jogou nada! Use `/ptp` para começar.",
+                f"{visual.AXOLOTL} você ainda não jogou nada! Use `/ptp` para começar.",
                 ephemeral=True,
             )
             return
@@ -234,23 +231,23 @@ class Jogos(commands.Cog, name="jogos"):
 
         embed = discord.Embed(
             title=f"Placar de {interaction.user.display_name}",
-            color=brand.PRIMARY,
+            color=visual.PRIMARY,
         )
         embed.add_field(name="vitórias", value=str(v), inline=True)
         embed.add_field(name="derrotas", value=str(d), inline=True)
         embed.add_field(name="empates", value=str(e), inline=True)
         embed.add_field(name="taxa de vitória", value=f"{pct}%", inline=False)
-        embed.set_footer(text=brand.FOOTER)
+        embed.set_footer(text=visual.FOOTER)
         await interaction.response.send_message(embed=embed)
 
-    # ── /ranking ─────────────────────────────────────────────
-    @app_commands.command(name="ranking", description="Veja o top 5 jogadores do servidor.")
+    # ─── /ranking ───
+    @app_commands.command(name="ranking", description="veja o top 5 jogadores do servidor.")
     async def ranking_slash(self, interaction: discord.Interaction):
-        """Versão slash do >ranking."""
-        ranking = await asyncio.to_thread(database.top_ptp, 5)
+        """versão slash do >ranking."""
+        ranking = await asyncio.to_thread(data.top_ptp, 5)
         if not ranking:
             await interaction.response.send_message(
-                f"{brand.AXOLOTL} ninguém jogou ainda! seja o primeiro com `/ptp`.",
+                f"{visual.AXOLOTL} ninguém jogou ainda! seja o primeiro com `/ptp`.",
                 ephemeral=True,
             )
             return
@@ -264,9 +261,9 @@ class Jogos(commands.Cog, name="jogos"):
         embed = discord.Embed(
             title="Ranking — Top 5 Jogadores",
             description="\n".join(linhas),
-            color=brand.WARNING,
+            color=visual.WARNING,
         )
-        embed.set_footer(text=brand.FOOTER)
+        embed.set_footer(text=visual.FOOTER)
         await interaction.response.send_message(embed=embed)
 
 

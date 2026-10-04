@@ -1,17 +1,7 @@
-"""Reminder de rolls do Mudae.
-
-Fluxo:
-1. alguém digita `$m`, `$wa`, `$ha`... → guarda pendente por 15s.
-2. o Mudae (ID 432610292342587392) responde com embed contendo
-   `X rolls left` + `next rolls reset in Y min` → agenda aviso.
-3. quando o timer estoura, o ALT marca a pessoa no mesmo canal.
-
-Só agenda quando os rolls acabaram (0 left). Se ainda tem rolls,
-não spamma. Se o embed não tiver tempo parseável, cai para
-`MUDAE_DEFAULT_MINUTES` (env, padrão 60).
-
-Persistido em SQLite (`mudae_reminder`) para sobreviver a `>restart`.
-"""
+# isso aq avisa quando os rolls do mudae voltam.
+# fluxo: alguem roleta `$m`/`$wa` -> guarda pendente 15s ->
+# o mudae responde com `rolls left` + tempo -> agenda o aviso.
+# so agenda quando zerou os rolls. salvo no banco pra sobreviver a `>restart`.
 
 import asyncio
 import logging
@@ -23,15 +13,15 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-import brand
-import database
+import visual
+import data
 
 log = logging.getLogger("alt.mudae")
 
 MUDAE_BOT_ID = int(os.getenv("MUDAE_BOT_ID", "432610292342587392"))
 DEFAULT_MINUTES = max(1, int(os.getenv("MUDAE_DEFAULT_MINUTES", "60") or 60))
 
-# Comandos do Mudae que consomem roll. `$tu`, `$daily`, `$vote`, `$dk`
+# comandos do Mudae que consomem roll. `$tu`, `$daily`, `$vote`, `$dk`
 # etc. não entram — só os de roletar waifu/husbando.
 ROLL_RE = re.compile(
     r"^\$(m|ma|mc|mg|mi|mm|w|wa|wg|h|ha|hg|anime|manga|game)\b",
@@ -47,7 +37,7 @@ MAX_MINUTOS = 180
 
 
 def _texto_mudae(message: discord.Message) -> str:
-    """Junta conteúdo + embeds em um texto só para o parse."""
+    """junta conteúdo + embeds em um texto só para o parse."""
     partes = [message.content or ""]
     for emb in message.embeds:
         partes.append(emb.title or "")
@@ -61,7 +51,7 @@ def _texto_mudae(message: discord.Message) -> str:
 
 
 def parse_mudae(texto: str) -> tuple[int | None, int | None]:
-    """Extrai (rolls_left, minutos_reset) do texto do Mudae.
+    """extrai (rolls_left, minutos_reset) do texto do Mudae.
 
     Retorna minutos=None quando não deve agendar (ainda tem rolls ou
     sem tempo parseável).
@@ -76,11 +66,11 @@ def parse_mudae(texto: str) -> tuple[int | None, int | None]:
         except ValueError:
             rolls_left = None
 
-    # Ainda tem rolls → sem reminder ("quando acabar" é a regra).
+    # ainda tem rolls → sem reminder ("quando acabar" é a regra).
     if rolls_left is not None and rolls_left > 0:
         return rolls_left, None
 
-    # Só mensagem de roll agenda. Sem "roll" no texto (ex: claims,
+    # só mensagem de roll agenda. Sem "roll" no texto (ex: claims,
     # daily, vote, kakera) não agenda — evita falso-positivo.
     if "roll" not in baixo:
         return rolls_left, None
@@ -108,7 +98,7 @@ def parse_mudae(texto: str) -> tuple[int | None, int | None]:
 
 
 class Mudae(commands.Cog, name="Mudae"):
-    """Marca quem roletou quando os rolls voltarem."""
+    """marca quem roletou quando os rolls voltarem."""
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -118,9 +108,9 @@ class Mudae(commands.Cog, name="Mudae"):
 
     @commands.Cog.listener()
     async def on_ready(self):
-        # Reagenda reminders que sobreviveram a restart.
+        # reagenda reminders que sobreviveram a restart.
         try:
-            todos = await asyncio.to_thread(database.listar_mudae)
+            todos = await asyncio.to_thread(data.listar_mudae)
         except Exception:
             log.exception("falha ao carregar reminders do Mudae")
             return
@@ -128,7 +118,7 @@ class Mudae(commands.Cog, name="Mudae"):
         for user_id, channel_id, guild_id, expires_at in todos:
             delay = expires_at - agora
             if delay <= 0:
-                await asyncio.to_thread(database.remover_mudae, user_id)
+                await asyncio.to_thread(data.remover_mudae, user_id)
                 continue
             self.timers[user_id] = asyncio.create_task(
                 self._dormir_e_avisar(user_id, channel_id, delay / 60)
@@ -172,7 +162,7 @@ class Mudae(commands.Cog, name="Mudae"):
         await self.agendar(dono, message.channel.id, message.guild.id, minutos)
 
     async def _achar_dono(self, message: discord.Message) -> int | None:
-        # Via reply (Mudae responde em thread/reply do comando).
+        # via reply (Mudae responde em thread/reply do comando).
         try:
             ref = message.reference
             if ref and ref.message_id:
@@ -182,12 +172,12 @@ class Mudae(commands.Cog, name="Mudae"):
         except Exception:
             pass
 
-        # Via mention direta na resposta.
+        # via mention direta na resposta.
         for membro in message.mentions:
             if not membro.bot:
                 return membro.id
 
-        # Via <@id> dentro do embed.
+        # via <@id> dentro do embed.
         m = MENTION_RE.search(_texto_mudae(message))
         if m:
             try:
@@ -195,7 +185,7 @@ class Mudae(commands.Cog, name="Mudae"):
             except ValueError:
                 pass
 
-        # Fallback: pendente mais recente deste canal (15s).
+        # fallback: pendente mais recente deste canal (15s).
         agora = time.time()
         melhor: int | None = None
         melhor_ts = 0.0
@@ -205,7 +195,7 @@ class Mudae(commands.Cog, name="Mudae"):
         return melhor
 
     async def _fallback(self, user_id: int, channel_id: int, guild_id: int):
-        """Se o Mudae não respondeu com tempo parseável em 15s, usa o default."""
+        """se o Mudae não respondeu com tempo parseável em 15s, usa o default."""
         await asyncio.sleep(PENDENTE_JANELA)
         if user_id not in self.pendentes:
             return  # já tratado pela resposta do Mudae
@@ -216,14 +206,14 @@ class Mudae(commands.Cog, name="Mudae"):
         await self.agendar(user_id, cid, guild_id, DEFAULT_MINUTES)
 
     async def agendar(self, user_id: int, channel_id: int, guild_id: int, minutos: int):
-        """Agenda (ou reagenda) o aviso. Um ativo por usuário."""
+        """agenda (ou reagenda) o aviso. Um ativo por usuário."""
         antiga = self.timers.pop(user_id, None)
         if antiga and not antiga.done():
             antiga.cancel()
 
         expires_at = time.time() + minutos * 60
         try:
-            await asyncio.to_thread(database.salvar_mudae, user_id, channel_id, guild_id, expires_at)
+            await asyncio.to_thread(data.salvar_mudae, user_id, channel_id, guild_id, expires_at)
         except Exception:
             log.exception("falha ao salvar reminder do Mudae")
             return
@@ -244,11 +234,11 @@ class Mudae(commands.Cog, name="Mudae"):
                     canal = None
             if canal is not None:
                 embed = discord.Embed(
-                    title=f"{brand.AXOLOTL} rolls de volta!",
+                    title=f"{visual.AXOLOTL} rolls de volta!",
                     description=f"<@{user_id}> seus rolls do Mudae voltaram!",
-                    color=brand.SECONDARY,
+                    color=visual.SECONDARY,
                 )
-                embed.set_footer(text=brand.FOOTER)
+                embed.set_footer(text=visual.FOOTER)
                 await canal.send(embed=embed)
             else:
                 log.warning("mudae: canal %d sumiu, dropando reminder %d", channel_id, user_id)
@@ -258,45 +248,45 @@ class Mudae(commands.Cog, name="Mudae"):
             log.exception("falha ao avisar reminder do Mudae")
         finally:
             try:
-                await asyncio.to_thread(database.remover_mudae, user_id)
+                await asyncio.to_thread(data.remover_mudae, user_id)
             except Exception:
                 pass
             self.timers.pop(user_id, None)
             self.pendentes.pop(user_id, None)
 
-    # ── >mudae [min] ─────────────────────────────────────────
+    # ─── >mudae [min] ───
     @commands.command(name="mudae")
     async def mudae_manual(self, ctx: commands.Context, minutos: int = 0):
-        """Agenda aviso manual. ex: `>mudae 7` te marca em 7 min."""
+        """agenda aviso manual. ex: `>mudae 7` te marca em 7 min."""
         if minutos <= 0 or minutos > MAX_MINUTOS:
             await ctx.send(
-                f"{brand.AXOLOTL} uso: `>mudae <minutos>` (1–{MAX_MINUTOS}). "
+                f"{visual.AXOLOTL} uso: `>mudae <minutos>` (1–{MAX_MINUTOS}). "
                 f"o auto-reminder já pega seus `$m`/`$wa` sozinho."
             )
             return
         await self.agendar(ctx.author.id, ctx.channel.id, ctx.guild.id if ctx.guild else 0, minutos)
         await ctx.send(
-            f"{brand.AXOLOTL} {ctx.author.mention} te marco em **{minutos} min**!"
+            f"{visual.AXOLOTL} {ctx.author.mention} te marco em **{minutos} min**!"
         )
 
     @commands.command(name="mudae_stop")
     async def mudae_stop(self, ctx: commands.Context):
-        """Cancela seu reminder do Mudae."""
+        """cancela seu reminder do Mudae."""
         tarefa = self.timers.pop(ctx.author.id, None)
         if tarefa and not tarefa.done():
             tarefa.cancel()
         self.pendentes.pop(ctx.author.id, None)
-        await asyncio.to_thread(database.remover_mudae, ctx.author.id)
-        await ctx.send(f"{brand.AXOLOTL} reminder cancelado!")
+        await asyncio.to_thread(data.remover_mudae, ctx.author.id)
+        await ctx.send(f"{visual.AXOLOTL} reminder cancelado!")
 
-    # ── /mudae ───────────────────────────────────────────────
-    @app_commands.command(name="mudae", description="Agenda aviso manual dos rolls do Mudae.")
+    # ─── /mudae ───
+    @app_commands.command(name="mudae", description="agenda aviso manual dos rolls do Mudae.")
     @app_commands.describe(minutos="em quantos minutos te marco (1–180)")
     async def mudae_slash(self, interaction: discord.Interaction, minutos: int):
-        """Versão slash do >mudae."""
+        """versão slash do >mudae."""
         if minutos <= 0 or minutos > MAX_MINUTOS:
             await interaction.response.send_message(
-                f"{brand.AXOLOTL} usa 1–{MAX_MINUTOS} minutos. "
+                f"{visual.AXOLOTL} usa 1–{MAX_MINUTOS} minutos. "
                 f"o auto-reminder já pega seus `$m`/`$wa` sozinho.",
                 ephemeral=True,
             )
@@ -304,20 +294,20 @@ class Mudae(commands.Cog, name="Mudae"):
         guild_id = interaction.guild.id if interaction.guild else 0
         await self.agendar(interaction.user.id, interaction.channel.id, guild_id, minutos)
         await interaction.response.send_message(
-            f"{brand.AXOLOTL} te marco em **{minutos} min**!", ephemeral=True
+            f"{visual.AXOLOTL} te marco em **{minutos} min**!", ephemeral=True
         )
 
-    # ── /mudae_stop ─────────────────────────────────────────
-    @app_commands.command(name="mudae_stop", description="Cancela seu reminder do Mudae.")
+    # ─── /mudae_stop ───
+    @app_commands.command(name="mudae_stop", description="cancela seu reminder do Mudae.")
     async def mudae_stop_slash(self, interaction: discord.Interaction):
-        """Versão slash do >mudae_stop."""
+        """versão slash do >mudae_stop."""
         tarefa = self.timers.pop(interaction.user.id, None)
         if tarefa and not tarefa.done():
             tarefa.cancel()
         self.pendentes.pop(interaction.user.id, None)
-        await asyncio.to_thread(database.remover_mudae, interaction.user.id)
+        await asyncio.to_thread(data.remover_mudae, interaction.user.id)
         await interaction.response.send_message(
-            f"{brand.AXOLOTL} reminder cancelado!", ephemeral=True
+            f"{visual.AXOLOTL} reminder cancelado!", ephemeral=True
         )
 
     def cog_unload(self):

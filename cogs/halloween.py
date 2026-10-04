@@ -1,16 +1,7 @@
-"""Countdown diário pro Halloween.
-
-Todo dia às 00:00 (America/Sao_Paulo, UTC-3 fixo — sem DST desde 2019):
-1. manda mensagem no chat de texto configurado.
-2. atualiza o voice channel status da call via
-   PUT /channels/{id}/voice-status
-   (`bot.http.edit_voice_channel_status` — discord.py 2.x não expõe
-   wrapper de alto nível, só o HTTP).
-
-Se o voice-status falhar (403 sem permissão SET_VOICE_CHANNEL_STATUS,
-canal não é voz, etc.), loga e segue — a mensagem diária continua.
-Nunca derruba o loop por causa do status.
-"""
+# isso aq conta os dias pro halloween todo dia 00:00.
+# manda msg no chat + atualiza o status da call via http direto
+# (`bot.http.edit_voice_channel_status`, o discord.py nao tem wrapper).
+# se o status falhar, loga e segue — a msg do dia continua saindo.
 
 import datetime
 import logging
@@ -20,7 +11,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 
-import brand
+import visual
 
 log = logging.getLogger("alt.halloween")
 
@@ -56,14 +47,14 @@ def texto_status(dias: int) -> str:
 
 def texto_mensagem(dias: int) -> str:
     if dias == 0:
-        return f"{brand.AXOLOTL} É HOJE! feliz halloween, galera!"
+        return f"{visual.AXOLOTL} É HOJE! feliz halloween, galera!"
     if dias == 1:
-        return f"{brand.AXOLOTL} é amanhã! falta **1 dia** pro halloween... preparem as fantasias."
-    return f"{brand.AXOLOTL} faltam **{dias} dias** pro halloween!"
+        return f"{visual.AXOLOTL} é amanhã! falta **1 dia** pro halloween... preparem as fantasias."
+    return f"{visual.AXOLOTL} faltam **{dias} dias** pro halloween!"
 
 
 class Halloween(commands.Cog, name="Halloween"):
-    """Mensagem diária + status da call com o countdown."""
+    """mensagem diária + status da call com o countdown."""
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -79,7 +70,7 @@ class Halloween(commands.Cog, name="Halloween"):
             log.info("halloween: loop diario 00:00 iniciado")
 
     async def _enviar_mensagem(self, dias: int) -> bool:
-        """Manda o embed do countdown no chat. True se enviou."""
+        """manda o embed do countdown no chat. True se enviou."""
         if not TEXT_CHANNEL_ID:
             return False
         try:
@@ -89,9 +80,9 @@ class Halloween(commands.Cog, name="Halloween"):
                 embed = discord.Embed(
                     title="countdown pro halloween",
                 description=texto_mensagem(dias),
-                color=brand.WARNING,
+                color=visual.WARNING,
             )
-            embed.set_footer(text=brand.FOOTER)
+            embed.set_footer(text=visual.FOOTER)
             await canal.send(embed=embed)
             return True
         except Exception:
@@ -99,7 +90,7 @@ class Halloween(commands.Cog, name="Halloween"):
             return False
 
     async def _atualizar_status(self, dias: int) -> bool:
-        """Atualiza o voice channel status da call. True se ok.
+        """atualiza o voice channel status da call. True se ok.
 
         Não é o nome do canal — é o status (PUT /voice-status).
         """
@@ -131,7 +122,7 @@ class Halloween(commands.Cog, name="Halloween"):
     async def before_countdown(self):
         await self.bot.wait_until_ready()
 
-    # ── >halloween ─────────────────────────────────────────
+    # ─── >halloween ───
     @commands.command(name="halloween")
     async def halloween(self, ctx: commands.Context):
         """mostra o countdown e atualiza o status da call na hora."""
@@ -144,10 +135,10 @@ class Halloween(commands.Cog, name="Halloween"):
                 "confere se eu tenho a permissão **Voice Channel Status** na call."
             )
 
-    # ── /halloween ─────────────────────────────────────────
-    @app_commands.command(name="halloween", description="Countdown pro halloween + atualiza a call.")
+    # ─── /halloween ───
+    @app_commands.command(name="halloween", description="countdown pro halloween + atualiza a call.")
     async def halloween_slash(self, interaction: discord.Interaction):
-        """Versão slash do >halloween."""
+        """versão slash do >halloween."""
         hoje = datetime.datetime.now(TZ).date()
         dias = dias_faltando(hoje)
         await interaction.response.send_message(texto_mensagem(dias))

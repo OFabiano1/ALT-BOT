@@ -5,11 +5,11 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-import brand
+import visual
 
 log = logging.getLogger("alt.tickets")
 
-# ── Configure aqui ou no .env ────────────────────────────────
+# ─── configure aqui ou no .env ───
 MOD_ROLE_ID       = int(os.getenv("MOD_ROLE_ID", "0"))
 TICKET_CHANNEL_ID = int(os.getenv("TICKET_CHANNEL_ID", "0"))
 TICKET_BANNER_URL = os.getenv("TICKET_BANNER_URL", "")
@@ -27,7 +27,7 @@ def _ids_configurados() -> bool:
 async def criar_ticket(interaction: discord.Interaction, emoji: str, label: str):
     canal = interaction.channel
 
-    # Procura um ticket aberto do mesmo usuário antes de criar outro.
+    # procura um ticket aberto do mesmo usuário antes de criar outro.
     for thread in canal.threads:
         if str(interaction.user.id) in thread.name and not thread.archived:
             await interaction.response.send_message(
@@ -44,7 +44,7 @@ async def criar_ticket(interaction: discord.Interaction, emoji: str, label: str)
             )
             return
 
-    # Reaproveita um ticket arquivado do mesmo usuário em vez de abrir outro.
+    # reaproveita um ticket arquivado do mesmo usuário em vez de abrir outro.
     ticket = None
     async for thread in canal.archived_threads(private=True):
         if str(interaction.user.id) in thread.name:
@@ -83,9 +83,9 @@ async def criar_ticket(interaction: discord.Interaction, emoji: str, label: str)
             "atendente responda.\n\n"
             "após a sua questão ser sanada, use `>fecharticket` para encerrar o atendimento."
         ),
-        color=brand.PRIMARY,
+        color=visual.PRIMARY,
     )
-    embed.set_footer(text=f"ALT • Sistema de Tickets • {brand.FOOTER}")
+    embed.set_footer(text=f"ALT • Sistema de Tickets • {visual.FOOTER}")
     await ticket.send(embed=embed)
 
 
@@ -117,7 +117,7 @@ class DropdownView(discord.ui.View):
 
 
 class Tickets(commands.Cog, name="tickets"):
-    """Sistema de tickets via thread privada."""
+    """sistema de tickets via thread privada."""
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -128,11 +128,11 @@ class Tickets(commands.Cog, name="tickets"):
                 ">setupticket e o preenchimento automatico de moderadores ficam inativos"
             )
 
-    # ── >setupticket ─────────────────────────────────────────
+    # ─── >setupticket ───
     @commands.command(name="setupticket")
     @commands.has_permissions(administrator=True)
     async def setup_ticket(self, ctx: commands.Context):
-        """[Admin] Envia o embed com o dropdown de tickets."""
+        """[admin] envia o embed com o dropdown de tickets."""
         if not TICKET_CHANNEL_ID:
             await ctx.send("`TICKET_CHANNEL_ID` não configurado!")
             return
@@ -150,7 +150,7 @@ class Tickets(commands.Cog, name="tickets"):
                 "Por aqui você pode reportar bugs de bots, realizar uma denúncia de outros "
                 "membros, parcerias (sorteios, boost e patrocínios) e adicionar bots."
             ),
-            color=brand.PRIMARY,
+            color=visual.PRIMARY,
         )
         if TICKET_BANNER_URL:
             embed.set_image(url=TICKET_BANNER_URL)
@@ -162,10 +162,10 @@ class Tickets(commands.Cog, name="tickets"):
         await canal.send(embed=embed, view=DropdownView())
         await ctx.send("embed de tickets enviado!", delete_after=5)
 
-    # ── >fecharticket ────────────────────────────────────────
+    # ─── >fecharticket ───
     @commands.command(name="fecharticket")
     async def fechar_ticket(self, ctx: commands.Context):
-        """Fecha o ticket atual."""
+        """fecha o ticket atual."""
         if not isinstance(ctx.channel, discord.Thread):
             await ctx.send("este comando só funciona dentro de um ticket!")
             return
@@ -182,22 +182,22 @@ class Tickets(commands.Cog, name="tickets"):
         await ctx.send(f"o ticket foi fechado por {ctx.author.mention}, obrigado por entrar em contato!")
         await ctx.channel.edit(archived=True, locked=True)
 
-    # ── >addticket ───────────────────────────────────────────
+    # ─── >addticket ───
     @commands.command(name="addticket")
     @commands.has_permissions(manage_threads=True)
     async def add_ticket(self, ctx: commands.Context, membro: discord.Member):
-        """[Mod] Adiciona um membro ao ticket atual."""
+        """[mod] adiciona um membro ao ticket atual."""
         if not isinstance(ctx.channel, discord.Thread):
             await ctx.send("use dentro de um ticket!")
             return
         await ctx.channel.add_user(membro)
         await ctx.send(f"{membro.mention} adicionado ao ticket!")
 
-    # ── /setupticket ─────────────────────────────────────────
-    @app_commands.command(name="setupticket", description="[Admin] Envia o painel de tickets.")
+    # ─── /setupticket ───
+    @app_commands.command(name="setupticket", description="[admin] envia o painel de tickets.")
     @app_commands.checks.has_permissions(administrator=True)
     async def setupticket_slash(self, interaction: discord.Interaction):
-        """Versão slash do >setupticket."""
+        """versão slash do >setupticket."""
         if not TICKET_CHANNEL_ID:
             await interaction.response.send_message(
                 "`TICKET_CHANNEL_ID` não configurado!", ephemeral=True
@@ -217,7 +217,7 @@ class Tickets(commands.Cog, name="tickets"):
                 "Por aqui você pode reportar bugs de bots, realizar uma denúncia de outros "
                 "membros, parcerias (sorteios, boost e patrocínios) e adicionar bots."
             ),
-            color=brand.PRIMARY,
+            color=visual.PRIMARY,
         )
         if TICKET_BANNER_URL:
             embed.set_image(url=TICKET_BANNER_URL)
@@ -229,10 +229,10 @@ class Tickets(commands.Cog, name="tickets"):
         await canal.send(embed=embed, view=DropdownView())
         await interaction.response.send_message("embed de tickets enviado!", ephemeral=True)
 
-    # ── /fecharticket ────────────────────────────────────────
-    @app_commands.command(name="fecharticket", description="Fecha o ticket atual.")
+    # ─── /fecharticket ───
+    @app_commands.command(name="fecharticket", description="fecha o ticket atual.")
     async def fecharticket_slash(self, interaction: discord.Interaction):
-        """Versão slash do >fecharticket."""
+        """versão slash do >fecharticket."""
         if not isinstance(interaction.channel, discord.Thread):
             await interaction.response.send_message(
                 "este comando só funciona dentro de um ticket!", ephemeral=True
@@ -253,12 +253,12 @@ class Tickets(commands.Cog, name="tickets"):
         )
         await interaction.channel.edit(archived=True, locked=True)
 
-    # ── /addticket ───────────────────────────────────────────
-    @app_commands.command(name="addticket", description="[Mod] Adiciona um membro ao ticket atual.")
+    # ─── /addticket ───
+    @app_commands.command(name="addticket", description="[mod] adiciona um membro ao ticket atual.")
     @app_commands.checks.has_permissions(manage_threads=True)
     @app_commands.describe(membro="quem entra no ticket")
     async def addticket_slash(self, interaction: discord.Interaction, membro: discord.Member):
-        """Versão slash do >addticket."""
+        """versão slash do >addticket."""
         if not isinstance(interaction.channel, discord.Thread):
             await interaction.response.send_message("use dentro de um ticket!", ephemeral=True)
             return

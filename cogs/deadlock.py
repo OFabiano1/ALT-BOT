@@ -229,8 +229,22 @@ async def _resolver_steam_do_stats(
     return link, None
 
 
+# ─── texto do >deadlock ───
+
+
+def _texto_deadlock() -> str:
+    # hub do deadlock: o chamado + onde ficam stats geral e semanal.
+    return (
+        "o shooter da valve que a comunidade joga.\n"
+        "chama a galera na call e bora.\n\n"
+        f"{visual.AXOLOTL} vincula sua steam com `>vincular`\n"
+        "e usa `>stats` pra ver rank, win rate e herois.\n"
+        "`>stats 7d` mostra teu resumo semanal."
+    )
+
+
 class Deadlock(commands.Cog, name="Deadlock"):
-    """deadlock: chamado, vínculo e stats."""
+    """deadlock: vínculo, stats geral e resumo semanal."""
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -238,28 +252,24 @@ class Deadlock(commands.Cog, name="Deadlock"):
     # ─── >deadlock ───
     @commands.command(name="deadlock")
     async def deadlock(self, ctx: commands.Context):
-        """chama a galera pro deadlock."""
+        """hub do deadlock: vincular, stats geral e resumo semanal."""
         embed = discord.Embed(
             title=f"{visual.DEADLOCK} Deadlock",
-            description=(
-                "o shooter da valve que a comunidade joga.\n"
-                "chama a galera na call e bora."
-            ),
+            description=_texto_deadlock(),
             color=visual.PRIMARY,
         )
         embed.set_footer(text=visual.FOOTER)
         await ctx.send(embed=embed)
 
     # ─── /deadlock ───
-    @app_commands.command(name="deadlock", description="chama a galera pro deadlock.")
+    @app_commands.command(
+        name="deadlock", description="deadlock: vincular, stats e resumo semanal."
+    )
     async def deadlock_slash(self, interaction: discord.Interaction):
         """versão slash do >deadlock."""
         embed = discord.Embed(
             title=f"{visual.DEADLOCK} Deadlock",
-            description=(
-                "o shooter da valve que a comunidade joga.\n"
-                "chama a galera na call e bora."
-            ),
+            description=_texto_deadlock(),
             color=visual.PRIMARY,
         )
         embed.set_footer(text=visual.FOOTER)

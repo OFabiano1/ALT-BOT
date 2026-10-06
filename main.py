@@ -222,6 +222,25 @@ ORDEM_AJUDA = (
     "Status",
 )
 
+# banner da ajuda. padrao embutido, mas link de cdn expira:
+# quando cair, bota o link novo no env que ele prevalece.
+AJUDA_BANNER_URL = os.getenv(
+    "AJUDA_BANNER_URL",
+    "https://cdn.discordapp.com/attachments/1017344173843693628/1556923654787309628/ajuda.png?backend=b2&ex=6ac5eda5&is=6ac49c25&hm=bfbe7708bd12f3485c2ffd864d7092b5b57e5cb80c87c99eccf815a8342be1f9&",
+)
+
+# emoji de cada secao (pela titulo exibido).
+CATEGORIA_EMOJIS = {
+    "Geral": "✨",
+    "Deadlock": "🎮",
+    "Níveis": "⭐",
+    "Jogos": "🎲",
+    "Economia": "💎",
+    "Tickets": "🎟️",
+    "Mudae": "🃏",
+    "Halloween": "🎃",
+}
+
 
 def _grupos_comandos() -> dict[str, list[tuple[str, str | None]]]:
     """comandos de prefixo agrupados: {categoria: [(nome, doc)]}."""
@@ -305,8 +324,95 @@ def _embed_ajuda(secoes: list[tuple[str, list[str]]]) -> discord.Embed:
     )
     for titulo, linhas in secoes:
         embed.add_field(name=titulo, value="\n".join(linhas), inline=False)
+    if AJUDA_BANNER_URL:
+        embed.set_image(url=AJUDA_BANNER_URL)
     embed.set_footer(text=visual.FOOTER)
     return embed
+
+
+def _embed_ajuda_resumo() -> discord.Embed:
+    """capa da ajuda: banner + botoes por categoria."""
+    embed = discord.Embed(
+        title=f"{visual.AXOLOTL} Comandos do ALT",
+        description=(
+            "funciono com `>` e com `/` — usa o que preferir.\n"
+            "escolhe uma categoria aqui embaixo."
+        ),
+        color=visual.PRIMARY,
+    )
+    if AJUDA_BANNER_URL:
+        embed.set_image(url=AJUDA_BANNER_URL)
+    embed.set_footer(text=visual.FOOTER)
+    return embed
+
+
+def _embed_ajuda_secao(titulo: str, linhas: list[str]) -> discord.Embed:
+    """uma categoria so: titulo + comandos + banner."""
+    emoji = CATEGORIA_EMOJIS.get(titulo, "")
+    nome = f"{emoji} {titulo}".strip()
+    embed = discord.Embed(
+        title=f"{visual.AXOLOTL} {nome}",
+        description="\n".join(linhas),
+        color=visual.PRIMARY,
+    )
+    if AJUDA_BANNER_URL:
+        embed.set_image(url=AJUDA_BANNER_URL)
+    embed.set_footer(text=visual.FOOTER)
+    return embed
+
+
+class AjudaView(discord.ui.View):
+    """botoes por categoria da ajuda. expira em 3min."""
+
+    def __init__(self, secoes: list[tuple[str, list[str]]]):
+        super().__init__(timeout=180)
+        self._mapa = dict(secoes)
+        for titulo, _linhas in secoes:
+            self.add_item(self._botao_categoria(titulo))
+        tudo = discord.ui.Button(
+            label="tudo",
+            emoji="📋",
+            style=discord.ButtonStyle.primary,
+            custom_id="ajuda:tudo",
+        )
+
+        async def mostrar_tudo(interaction: discord.Interaction):
+            await interaction.response.edit_message(
+                embed=_embed_ajuda(list(self._mapa.items())), view=self
+            )
+
+        tudo.callback = mostrar_tudo
+        self.add_item(tudo)
+        inicio = discord.ui.Button(
+            label="início",
+            emoji="🏠",
+            style=discord.ButtonStyle.secondary,
+            custom_id="ajuda:inicio",
+        )
+
+        async def voltar(interaction: discord.Interaction):
+            await interaction.response.edit_message(
+                embed=_embed_ajuda_resumo(), view=self
+            )
+
+        inicio.callback = voltar
+        self.add_item(inicio)
+
+    def _botao_categoria(self, titulo: str) -> discord.ui.Button:
+        botao = discord.ui.Button(
+            label=titulo,
+            emoji=CATEGORIA_EMOJIS.get(titulo),
+            style=discord.ButtonStyle.secondary,
+            custom_id=f"ajuda:cat:{titulo}",
+        )
+
+        async def mostrar(interaction: discord.Interaction, alvo=titulo):
+            await interaction.response.edit_message(
+                embed=_embed_ajuda_secao(alvo, self._mapa[alvo]), view=self
+            )
+
+        botao.callback = mostrar
+        return botao
 
 
 @bot.command(name="ajuda")
@@ -337,7 +443,7 @@ async def ajuda(ctx):
             trava = await permissao(cmd) if cmd else ""
             if trava:
                 travas[f">{nome}"] = trava
-    await ctx.send(embed=_embed_ajuda(_linhas_ajuda(travas)))
+    await ctx.send(embed=_embed_ajuda_resumo(), view=AjudaView(_linhas_ajuda(travas)))
 
 
 @bot.tree.command(name="ajuda", description="mostra todos os comandos do bot.")
@@ -359,7 +465,9 @@ async def ajuda_slash(interaction: discord.Interaction):
                 travas[f"/{cmd.name}"] = "restrito"
                 break
     await interaction.response.send_message(
-        embed=_embed_ajuda(_linhas_ajuda(travas)), ephemeral=True
+        embed=_embed_ajuda_resumo(),
+        view=AjudaView(_linhas_ajuda(travas)),
+        ephemeral=True,
     )
 
 

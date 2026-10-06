@@ -77,8 +77,8 @@ class Halloween(commands.Cog, name="Halloween"):
             canal = self.bot.get_channel(TEXT_CHANNEL_ID)
             if canal is None:
                 canal = await self.bot.fetch_channel(TEXT_CHANNEL_ID)
-                embed = discord.Embed(
-                    title="countdown pro halloween",
+            embed = discord.Embed(
+                title="countdown pro halloween",
                 description=texto_mensagem(dias),
                 color=visual.WARNING,
             )

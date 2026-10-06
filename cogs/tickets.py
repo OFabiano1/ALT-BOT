@@ -56,6 +56,8 @@ async def criar_ticket(interaction: discord.Interaction, emoji: str, label: str)
     if ticket is not None:
         await ticket.edit(archived=False, locked=False)
         await ticket.edit(name=nome_thread, auto_archive_duration=AUTO_ARCHIVE, invitable=False)
+        # reabriu: garante o dono dentro (pode ter saido da thread).
+        await ticket.add_user(interaction.user)
     else:
         ticket = await canal.create_thread(
             name=nome_thread,
@@ -63,6 +65,8 @@ async def criar_ticket(interaction: discord.Interaction, emoji: str, label: str)
             auto_archive_duration=AUTO_ARCHIVE,
             invitable=False,
         )
+        # thread privada nao inclui o dono sozinha: sem isso ele nao ve o ticket.
+        await ticket.add_user(interaction.user)
 
     if MOD_ROLE_ID:
         cargo_mod = interaction.guild.get_role(MOD_ROLE_ID)
@@ -76,7 +80,7 @@ async def criar_ticket(interaction: discord.Interaction, emoji: str, label: str)
     )
 
     embed = discord.Embed(
-        title=f"{label}",
+        title=f"{emoji} {label}",
         description=(
             f"{interaction.user.mention} ticket criado!\n\n"
             "envie todas as informações possíveis sobre seu caso e aguarde até que um "
@@ -92,8 +96,9 @@ async def criar_ticket(interaction: discord.Interaction, emoji: str, label: str)
 class Dropdown(discord.ui.Select):
     def __init__(self):
         options = [
-            discord.SelectOption(value="ticket",   label="Ticket"),
-            discord.SelectOption(value="denuncia", label="Denúncia"),
+            discord.SelectOption(value="denuncia", label="Denúncia",     emoji="🚨"),
+            discord.SelectOption(value="bug",      label="Reportar bug", emoji="🐛"),
+            discord.SelectOption(value="outra",    label="Outra",        emoji="🎟️"),
         ]
         super().__init__(
             placeholder="selecione uma opção...",
@@ -104,10 +109,12 @@ class Dropdown(discord.ui.Select):
         )
 
     async def callback(self, interaction: discord.Interaction):
-        if self.values[0] == "ticket":
-            await criar_ticket(interaction, "ticket", "Ticket")
-        elif self.values[0] == "denuncia":
-            await criar_ticket(interaction, "denuncia", "Denúncia")
+        if self.values[0] == "denuncia":
+            await criar_ticket(interaction, "🚨", "Denúncia")
+        elif self.values[0] == "bug":
+            await criar_ticket(interaction, "🐛", "Reportar bug")
+        elif self.values[0] == "outra":
+            await criar_ticket(interaction, "🎟️", "Outra")
 
 
 class DropdownView(discord.ui.View):

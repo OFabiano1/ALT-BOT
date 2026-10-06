@@ -1,6 +1,5 @@
-# isso aq e tudo de voz: entrar, sair, oi manual e boas-vindas.
-# >call fixa a call no banco, >sair solta. sem >sair ele nao sai:
-# se cair ou for kickado, volta sozinho. restart nao tira.
+# isso aq e tudo de voz, versao leve: entrar, tocar, sair.
+# sem banco, sem auto-rejoin, sem vigia. caiu? da >call de novo.
 
 import asyncio
 import logging
@@ -11,7 +10,6 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-import data
 import visual
 
 log = logging.getLogger("alt.voz")
@@ -44,14 +42,14 @@ async def _desconectar(vc, onde: str) -> bool:
 
 
 def _fonte_oi():
-    """audio do oi em opus direto: sem re-encode, sem libopus.
-
-    O FFmpegPCMAudio decodifica pra PCM e o discord.py re-encoda
-    pra opus (precisa de libopus no host). O OpusAudio ja sai
-    transcodificado do ffmpeg e vai direto pro fio. bitrate 64k
-    bate com a voz padrao e pesa menos no host.
-    """
+    """audio do oi em opus direto: sem re-encode, sem libopus."""
     return discord.FFmpegOpusAudio(str(AUDIO_OI), bitrate=64)
+
+
+def _depois_oi(erro):
+    # o ffmpeg roda em thread propria: erro depois do play so aparece aqui.
+    if erro:
+        log.error("audio de boas-vindas falhou no meio: %s", erro)
 
 
 def _tocar_oi(vc) -> str | None:
@@ -81,96 +79,17 @@ def _tocar_oi(vc) -> str | None:
         return "deu ruim tentando tocar o oi!"
 
 
-def _depois_oi(erro):
-    # o ffmpeg roda em thread propria: erro depois do play so aparece aqui.
-    if erro:
-        log.error("audio de boas-vindas falhou no meio: %s", erro)
-
-
 class Voz(commands.Cog, name="Voz"):
-    """call fixa, oi manual e boas-vindas pra quem chega."""
+    """entra, toca o oi, sai. nada mais."""
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self._ultimo_oi: dict[int, float] = {}
 
-    # ─── volta sozinho ───
-    @commands.Cog.listener()
-    async def on_ready(self):
-        # volta pras calls fixadas (sobrevive a restart e queda).
-        for guild in self.bot.guilds:
-            canal_id = await asyncio.to_thread(data.voz_fixa, guild.id)
-            if canal_id is None:
-                continue
-            await self._conectar_limpo(guild, canal_id, "voltei pra call fixada")
-
+    # ─── boas-vindas ───
     @commands.Cog.listener()
     async def on_voice_state_update(self, membro, antes, depois):
-        # queda do proprio bot: volta pra fixada.
-        if self.bot.user is not None and membro.id == self.bot.user.id:
-            if depois.channel is not None or antes.channel is None:
-                return
-            canal_id = await asyncio.to_thread(data.voz_fixa, membro.guild.id)
-            if canal_id is None:
-                return
-            log.info("cai da call, voltando pra fixada %d", canal_id)
-            asyncio.create_task(self._voltar_call(membro.guild.id, canal_id))
-            return
-        # boas-vindas: alguem entrou na call onde o bot esta.
-        await self._oi_quem_chegou(membro, antes, depois)
-
-    async def _conectar_limpo(self, guild: discord.Guild, canal_id: int, msg_ok: str):
-        """limpa voz morta e conecta. False se falhar."""
-        vc = guild.voice_client
-        if vc is not None and not vc.is_connected():
-            await _desconectar(vc, "rejoin")
-            vc = None
-            log.info("limpei voz morta")
-        if vc is not None:
-            return True
-        try:
-            canal = guild.get_channel(canal_id)
-            if canal is None:
-                canal = await self.bot.fetch_channel(canal_id)
-            await asyncio.wait_for(canal.connect(), timeout=TIMEOUT_ENTRAR)
-            log.info("%s %d", msg_ok, canal_id)
-            return True
-        except asyncio.TimeoutError:
-            log.warning("voz demorou demais na call %d", canal_id)
-            return False
-        except Exception:
-            log.exception("nao consegui conectar na call %d", canal_id)
-            return False
-
-    async def _voltar_call(self, guild_id: int, channel_id: int, tentativas: int = 3):
-        # espera um pouco pra nao brigar com queda rapida seguida.
-        await asyncio.sleep(5)
-        for _ in range(tentativas):
-            guild = self.bot.get_guild(guild_id)
-            if guild is None:
-                return
-            vc = guild.voice_client
-            if vc is not None and vc.is_connected():
-                return
-            try:
-                canal = guild.get_channel(channel_id)
-                if canal is None:
-                    canal = await self.bot.fetch_channel(channel_id)
-            except (discord.NotFound, discord.Forbidden):
-                # call sumiu ou perdi acesso: desfixa pra nao tentar pra sempre.
-                await asyncio.to_thread(data.soltar_voz, guild_id)
-                return
-            except Exception:
-                log.exception("falha ao voltar pra call, tento de novo")
-                await asyncio.sleep(10)
-                continue
-            if await self._conectar_limpo(guild, channel_id, "voltei pra call fixada"):
-                return
-            await asyncio.sleep(10)
-
-    # ─── boas-vindas ───
-    async def _oi_quem_chegou(self, membro, antes, depois):
-        # ignora bot (senao um bot entrando vira festa infinita).
+        # ignora bot.
         if membro.bot:
             return
         # so conta entrar numa call: sair ou mutar nao conta.
@@ -180,7 +99,6 @@ class Voz(commands.Cog, name="Voz"):
             return
         vc = membro.guild.voice_client
         if vc is None or not vc.is_connected():
-            log.info("%s entrou na call mas nao estou la — sem oi", membro.display_name)
             return
         # so conta entrar na mesma call do bot.
         if depois.channel.id != vc.channel.id:
@@ -188,13 +106,10 @@ class Voz(commands.Cog, name="Voz"):
         agora = time.monotonic()
         if agora - self._ultimo_oi.get(membro.guild.id, 0) < OI_COOLDOWN:
             return
-        # mesmo caminho do >oi: erro aqui so loga, nunca fala no chat.
         erro = _tocar_oi(vc)
         if erro is None:
             self._ultimo_oi[membro.guild.id] = agora
             log.info("oi pra %s na call", membro.display_name)
-        else:
-            log.warning("oi auto falhou: %s", erro)
 
     # ─── >call ───
     @commands.command(name="call")
@@ -224,7 +139,6 @@ class Voz(commands.Cog, name="Voz"):
             if vc is not None and not vc.is_connected():
                 await _desconectar(vc, ">call")
                 vc = None
-                log.info("limpei voz morta no >call")
 
             try:
                 if vc is not None:
@@ -235,10 +149,9 @@ class Voz(commands.Cog, name="Voz"):
                 log.warning(">call: voz demorou demais")
                 await ctx.send(
                     "a voz tá demorando pra responder (rede do host tá lenta). "
-                    "tenta de novo em uns segundos — se eu entrar, eu fico!"
+                    "tenta de novo em uns segundos!"
                 )
                 return
-            await asyncio.to_thread(data.fixar_voz, ctx.guild.id, canal.id)
             await ctx.send(f"tô na call **{canal.name}**!")
         except Exception as erro:
             log.exception("falha ao entrar na call")
@@ -278,7 +191,6 @@ class Voz(commands.Cog, name="Voz"):
             if vc is not None and not vc.is_connected():
                 await _desconectar(vc, "/call")
                 vc = None
-                log.info("limpei voz morta no /call")
             try:
                 if vc is not None:
                     await asyncio.wait_for(vc.move_to(canal), timeout=TIMEOUT_MOVER)
@@ -288,7 +200,7 @@ class Voz(commands.Cog, name="Voz"):
                 log.warning("/call: voz demorou demais")
                 texto = (
                     "a voz tá demorando pra responder (rede do host tá lenta). "
-                    "tenta de novo em uns segundos — se eu entrar, eu fico!"
+                    "tenta de novo em uns segundos!"
                 )
                 try:
                     if interaction.response.is_done():
@@ -298,7 +210,6 @@ class Voz(commands.Cog, name="Voz"):
                 except discord.DiscordException:
                     pass
                 return
-            await asyncio.to_thread(data.fixar_voz, interaction.guild.id, canal.id)
             await interaction.response.send_message(f"tô na call **{canal.name}**!")
         except Exception as erro:
             log.exception("falha ao entrar na call (slash)")
@@ -319,9 +230,6 @@ class Voz(commands.Cog, name="Voz"):
         if vc is None:
             await ctx.send("não estou em call")
             return
-        await asyncio.to_thread(data.soltar_voz, ctx.guild.id)
-        # banco solto primeiro: mesmo se o disconnect travar,
-        # nada tenta me botar de volta. resposta sempre sai.
         await _desconectar(vc, ">sair")
         await ctx.send("saí da call!")
 
@@ -333,7 +241,6 @@ class Voz(commands.Cog, name="Voz"):
         if vc is None:
             await interaction.response.send_message("não estou em call", ephemeral=True)
             return
-        await asyncio.to_thread(data.soltar_voz, interaction.guild.id)
         await _desconectar(vc, "/sair")
         await interaction.response.send_message("saí da call!")
 

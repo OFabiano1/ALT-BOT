@@ -189,10 +189,10 @@ class Jogos(commands.Cog, name="jogos"):
         embed.set_footer(text=visual.FOOTER)
         await ctx.send(embed=embed)
 
-    # ─── >ranking ───
-    @commands.command(name="ranking")
+    # ─── >rankingptp ───
+    @commands.command(name="rankingptp")
     async def ranking(self, ctx: commands.Context):
-        """veja o top 5 jogadores do servidor."""
+        """veja o top 5 jogadores do ptp no servidor."""
         ranking = await asyncio.to_thread(data.top_ptp, 5)
         if not ranking:
             await ctx.send(
@@ -240,10 +240,10 @@ class Jogos(commands.Cog, name="jogos"):
         embed.set_footer(text=visual.FOOTER)
         await interaction.response.send_message(embed=embed)
 
-    # ─── /ranking ───
-    @app_commands.command(name="ranking", description="veja o top 5 jogadores do servidor.")
+    # ─── /rankingptp ───
+    @app_commands.command(name="rankingptp", description="veja o top 5 jogadores do ptp no servidor.")
     async def ranking_slash(self, interaction: discord.Interaction):
-        """versão slash do >ranking."""
+        """versão slash do >rankingptp."""
         ranking = await asyncio.to_thread(data.top_ptp, 5)
         if not ranking:
             await interaction.response.send_message(

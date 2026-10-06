@@ -7,8 +7,8 @@ o bot oficial da **axolotl br** — sua comunidade na internet. de player pra pl
 | sistema | comandos |
 |---|---|
 | geral | `>axolotl` `>ping` `/ping` `>ajuda` `>call` `>sair` |
-| jogos | `>ptp` `/ptp` `>placar` `>ranking` |
-| níveis | `>rank` `>top` |
+| jogos | `>ptp` `/ptp` `>placar` `>rankingptp` |
+| níveis | `>xp` (`>rank`) `>ranking` (`>top`) |
 | economia | `>saldo` `>daily` `>pay` `>loja` `>buy` `>roll` `>colecao` `>topdima` |
 | mudae | auto-reminder `$m`/`$wa`/`$ha`... + `>mudae <min>` `>mudae_stop` |
 | tickets | `>setupticket` `>fecharticket` `>addticket` |

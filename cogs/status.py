@@ -5,8 +5,6 @@ from discord.ext import commands, tasks
 
 # ─── rotacao ───
 
-# deadlock (o jogo da valve) roda junto com o resto da comunidade.
-# ver `../AGENTS.md` (regra deadlock): presenca e obrigatoria.
 STATUSES = [
     ("custom",     "✦ axolotlbr.xyz"),
     ("custom",     "✦ powered by Axolotl BR"),

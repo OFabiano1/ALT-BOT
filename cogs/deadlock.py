@@ -3,6 +3,8 @@
 # sem numero inventado: se a api nao tem, o bot fala que nao tem.
 
 import asyncio
+import io
+import logging
 import re
 
 import discord
@@ -11,7 +13,10 @@ from discord.ext import commands
 
 import data
 import deadlock_api
+import deadlock_card
 import visual
+
+log = logging.getLogger("alt.deadlock")
 
 # ─── vinculo ───
 
@@ -112,11 +117,11 @@ def _carregar_stats(account_id: int, periodo: str) -> dict:
     # tudo que o embed precisa, numa thread só pra nao travar o loop.
     rank = deadlock_api.buscar_rank(account_id)
     perfil = deadlock_api.buscar_steam_profile(account_id)
-    heroes = deadlock_api.buscar_heroes()
-    ranks = deadlock_api.buscar_ranks()
+    hero_assets = deadlock_api.buscar_hero_assets()
+    rank_assets = deadlock_api.buscar_rank_assets()
     tier = int(rank.get("rank", 0) or 0)
     sub = int(rank.get("subrank", 0) or 0)
-    nome_rank = ranks.get(tier, "Obscurus")
+    nome_rank = (rank_assets.get(tier) or {}).get("nome", "Obscurus")
     if tier <= 0:
         rank_txt = "obscurus"
     else:
@@ -133,9 +138,27 @@ def _carregar_stats(account_id: int, periodo: str) -> dict:
         or f"https://steamcommunity.com/profiles/{deadlock_api.account_para_steam64(account_id)}",
         "rank_txt": rank_txt,
         "rank_emoji": visual.deadlock_rank_emoji(nome_rank),
+        "tier": tier,
+        "rank_img": (rank_assets.get(tier) or {}).get("imagem"),
         "resumo": resumo,
-        "heroes": heroes,
+        "heroes": {hid: v["nome"] for hid, v in hero_assets.items()},
+        "hero_assets": hero_assets,
+        "retratos": {hid: v["retrato"] for hid, v in hero_assets.items()},
     }
+
+
+async def _anexar_card(
+    pacote: dict, periodo: str, embed: discord.Embed
+) -> discord.File | None:
+    # tenta o card png; se falhar, loga e o texto segue sozinho.
+    try:
+        png = await asyncio.to_thread(deadlock_card.render, pacote, periodo)
+        arquivo = discord.File(io.BytesIO(png), filename="deadlock_stats.png")
+        embed.set_image(url="attachment://deadlock_stats.png")
+        return arquivo
+    except Exception:
+        log.exception("deadlock: card falhou, vai so texto")
+        return None
 
 
 def _embed_stats_geral(pacote: dict) -> discord.Embed:
@@ -359,7 +382,8 @@ class Deadlock(commands.Cog, name="Deadlock"):
             await ctx.send(f"deu ruim buscando na api: `{e}`. tenta de novo em uns segundos.")
             return
         embed = _embed_stats_7d(pacote) if periodo == "7d" else _embed_stats_geral(pacote)
-        await ctx.send(embed=embed)
+        arquivo = await _anexar_card(pacote, periodo, embed)
+        await ctx.send(embed=embed, file=arquivo)
 
     # ─── /stats ───
     @app_commands.command(name="stats", description="stats do deadlock (geral ou 7 dias).")
@@ -404,7 +428,8 @@ class Deadlock(commands.Cog, name="Deadlock"):
             )
             return
         embed = _embed_stats_7d(pacote) if periodo == "7d" else _embed_stats_geral(pacote)
-        await interaction.followup.send(embed=embed)
+        arquivo = await _anexar_card(pacote, periodo, embed)
+        await interaction.followup.send(embed=embed, file=arquivo)
 
 
 async def setup(bot: commands.Bot):

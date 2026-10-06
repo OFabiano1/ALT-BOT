@@ -223,6 +223,65 @@ def buscar_ranks() -> dict[int, str]:
     return mapa
 
 
+def buscar_rank_assets() -> dict[int, dict]:
+    """tier -> {nome, imagem}. imagem oficial pra embutir no card. cache 24h."""
+    chave = "assets:ranks:full"
+    hit = _cache_get(chave)
+    if isinstance(hit, dict):
+        return hit  # type: ignore[return-value]
+    dados = _get_json("/v1/assets/ranks")
+    mapa: dict[int, dict] = {}
+    if isinstance(dados, list):
+        for r in dados:
+            try:
+                tier = int(r["tier"])
+                imgs = r.get("images", {}) or {}
+                mapa[tier] = {
+                    "nome": str(r["name"]),
+                    "imagem": imgs.get("large") or imgs.get("small"),
+                }
+            except (KeyError, TypeError, ValueError):
+                continue
+    _cache_set(chave, mapa, 86400)
+    return mapa
+
+
+def buscar_hero_assets() -> dict[int, dict]:
+    """id -> {nome, retrato}. retrato oficial pro card. cache 24h."""
+    chave = "assets:heroes:full"
+    hit = _cache_get(chave)
+    if isinstance(hit, dict):
+        return hit  # type: ignore[return-value]
+    dados = _get_json("/v1/assets/heroes")
+    mapa: dict[int, dict] = {}
+    if isinstance(dados, list):
+        for h in dados:
+            try:
+                hid = int(h["id"])
+                imgs = h.get("images", {}) or {}
+                mapa[hid] = {
+                    "nome": str(h["name"]),
+                    "retrato": imgs.get("icon_image_small")
+                    or imgs.get("icon_hero_card"),
+                }
+            except (KeyError, TypeError, ValueError):
+                continue
+    _cache_set(chave, mapa, 86400)
+    return mapa
+
+
+def buscar_fontes() -> dict[str, str]:
+    """arquivo da fonte -> url no cdn. cache 24h."""
+    chave = "assets:fonts"
+    hit = _cache_get(chave)
+    if isinstance(hit, dict):
+        return hit  # type: ignore[return-value]
+    dados = _get_json("/v1/assets/fonts")
+    mapa = dict(dados) if isinstance(dados, dict) else {}
+    _cache_set(chave, mapa, 86400)
+    return mapa
+
+
 # ─── agregação ───
 
 

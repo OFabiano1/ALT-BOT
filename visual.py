@@ -30,6 +30,39 @@ DIAMANTE = (os.getenv("DIAMANTE_EMOJI") or _DIAMANTE).strip()
 _DEADLOCK = "<:DEADLOCK:1556293610939482167>"
 DEADLOCK = (os.getenv("DEADLOCK_EMOJI") or _DEADLOCK).strip()
 
+
+def _mapa_emojis(texto: str | None) -> dict[str, str]:
+    # "holliday=<:dl_holliday:123>,wraith=<:dl_wraith:456>" -> {"holliday": "<...>"}
+    # vazio ou par invalido so ignora, quem chama usa texto puro.
+    mapa: dict[str, str] = {}
+    for par in (texto or "").split(","):
+        nome, sep, emoji = par.partition("=")
+        if not sep:
+            continue
+        nome = nome.strip().lower()
+        emoji = emoji.strip()
+        if nome and emoji:
+            mapa[nome] = emoji
+    return mapa
+
+
+# rank por tier (ex: initiate) e heroi por nome (ex: holliday).
+# padrao vazio = texto puro, env so preenche quando o custom existir.
+DEADLOCK_RANK_EMOJIS = _mapa_emojis(os.getenv("DEADLOCK_RANK_EMOJIS"))
+DEADLOCK_HERO_EMOJIS = _mapa_emojis(os.getenv("DEADLOCK_HERO_EMOJIS"))
+
+
+def deadlock_rank_emoji(tier_nome: str) -> str:
+    """devolve 'emoji ' ou '' pra cair no texto puro."""
+    emoji = DEADLOCK_RANK_EMOJIS.get((tier_nome or "").strip().lower(), "")
+    return f"{emoji} " if emoji else ""
+
+
+def deadlock_hero_emoji(heroi_nome: str) -> str:
+    """devolve 'emoji ' ou '' pra cair no texto puro."""
+    emoji = DEADLOCK_HERO_EMOJIS.get((heroi_nome or "").strip().lower(), "")
+    return f"{emoji} " if emoji else ""
+
 # ─── paleta ───
 
 # superficies do dark mode. profundidade vem de camada e borda,

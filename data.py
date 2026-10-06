@@ -66,6 +66,12 @@ CREATE TABLE IF NOT EXISTS voz_fixa (
     guild_id   INTEGER PRIMARY KEY,
     channel_id INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS deadlock_links (
+    discord_id INTEGER PRIMARY KEY,
+    steam_id   INTEGER NOT NULL,
+    updated_at REAL NOT NULL
+);
 """
 
 
@@ -436,6 +442,41 @@ def voz_fixa(guild_id: int) -> int | None:
             "SELECT channel_id FROM voz_fixa WHERE guild_id = ?", (guild_id,)
         ).fetchone()
     return row["channel_id"] if row else None
+
+
+# ─── vínculo deadlock (discord -> steam) ───
+def vincular_deadlock(discord_id: int, steam_id: int) -> None:
+    """salva/troca o vínculo deadlock. um por usuário."""
+    import time
+
+    with _lock, _conectar() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute(
+            "INSERT INTO deadlock_links (discord_id, steam_id, updated_at) "
+            "VALUES (?, ?, ?) ON CONFLICT(discord_id) DO UPDATE SET "
+            "steam_id = excluded.steam_id, updated_at = excluded.updated_at",
+            (discord_id, steam_id, time.time()),
+        )
+
+
+def desvincular_deadlock(discord_id: int) -> bool:
+    """remove o vínculo. retorna True se existia."""
+    with _lock, _conectar() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        cur = conn.execute(
+            "DELETE FROM deadlock_links WHERE discord_id = ?", (discord_id,)
+        )
+        return cur.rowcount > 0
+
+
+def buscar_deadlock(discord_id: int) -> int | None:
+    """devolve o steam_id vinculado ou None."""
+    with _lock, _conectar() as conn:
+        row = conn.execute(
+            "SELECT steam_id FROM deadlock_links WHERE discord_id = ?",
+            (discord_id,),
+        ).fetchone()
+    return int(row["steam_id"]) if row else None
 
 
 # ─── migração ───

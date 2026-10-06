@@ -3,6 +3,7 @@
 # sem numero inventado: se a api nao tem, o bot fala que nao tem.
 
 import asyncio
+import concurrent.futures
 import io
 import logging
 import re
@@ -115,10 +116,25 @@ def _separar_args_stats(texto: str) -> tuple[str | None, str]:
 
 def _carregar_stats(account_id: int, periodo: str) -> dict:
     # tudo que o embed precisa, numa thread só pra nao travar o loop.
-    rank = deadlock_api.buscar_rank(account_id)
-    perfil = deadlock_api.buscar_steam_profile(account_id)
     hero_assets = deadlock_api.buscar_hero_assets()
-    rank_assets = deadlock_api.buscar_rank_assets()
+    # as chamadas sao independentes: vao juntas em paralelo.
+    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
+        f_rank = ex.submit(deadlock_api.buscar_rank, account_id)
+        f_perfil = ex.submit(deadlock_api.buscar_steam_profile, account_id)
+        f_heroes = ex.submit(deadlock_api.buscar_hero_assets)
+        f_ranks = ex.submit(deadlock_api.buscar_rank_assets)
+        if periodo == "7d":
+            resumo = deadlock_api.resumo_7d(
+                ex.submit(deadlock_api.buscar_match_history, account_id).result()
+            )
+        else:
+            resumo = deadlock_api.resumo_geral(
+                ex.submit(deadlock_api.buscar_hero_stats, account_id).result()
+            )
+        rank = f_rank.result()
+        perfil = f_perfil.result()
+        hero_assets = f_heroes.result()
+        rank_assets = f_ranks.result()
     tier = int(rank.get("rank", 0) or 0)
     sub = int(rank.get("subrank", 0) or 0)
     nome_rank = (rank_assets.get(tier) or {}).get("nome", "Obscurus")
@@ -150,12 +166,17 @@ def _carregar_stats(account_id: int, periodo: str) -> dict:
 async def _anexar_card(
     pacote: dict, periodo: str, embed: discord.Embed
 ) -> discord.File | None:
-    # tenta o card png; se falhar, loga e o texto segue sozinho.
+    # tenta o card png; se falhar ou demorar, o texto segue sozinho.
     try:
-        png = await asyncio.to_thread(deadlock_card.render, pacote, periodo)
+        png = await asyncio.wait_for(
+            asyncio.to_thread(deadlock_card.render, pacote, periodo), timeout=20
+        )
         arquivo = discord.File(io.BytesIO(png), filename="deadlock_stats.png")
         embed.set_image(url="attachment://deadlock_stats.png")
         return arquivo
+    except asyncio.TimeoutError:
+        log.warning("deadlock: card demorou, vai so texto")
+        return None
     except Exception:
         log.exception("deadlock: card falhou, vai so texto")
         return None

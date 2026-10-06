@@ -5,7 +5,9 @@
 # sem rede no import: tudo que baixa roda via asyncio.to_thread no cog.
 # qualquer falha levanta DeadlockCardError e o cog cai pro texto.
 
+import concurrent.futures
 import re
+import threading
 import unicodedata
 from io import BytesIO
 from pathlib import Path
@@ -30,6 +32,7 @@ BORDA = (42, 52, 64)
 TEXTO = (232, 237, 242)
 TEXTO_APAGADO = (138, 151, 166)
 VIOLETA = (143, 0, 255)
+VIOLETA_CLARO = (186, 108, 255)
 VERDE = (74, 222, 128)
 
 LARGURA = 1000
@@ -86,6 +89,30 @@ def _baixar(url: str | None, nome: str) -> Path | None:
         return None
 
 
+# cache em memoria: retrato nao muda, nao faz sentido
+# decodificar e redimensionar toda vez. lock pq o render
+# roda em varias threads (asyncio.to_thread no cog).
+_FONT_CACHE: dict = {}
+_IMG_CACHE: dict = {}
+_CACHE_LOCK = threading.Lock()
+
+
+def _baixar_todos(pares: list[tuple[str, str | None]]) -> None:
+    """baixa em paralelo o que ainda nao esta no disco."""
+    pasta = _pasta()
+    alvos = [
+        (nome, url)
+        for nome, url in pares
+        if url and not (pasta / nome).exists()
+    ]
+    if not alvos:
+        return
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=min(8, len(alvos))
+    ) as ex:
+        list(ex.map(lambda p: _baixar(p[1], p[0]), alvos))
+
+
 def _fontes():
     """pegar(estilo, tamanho): display, texto ou texto_bold."""
     mapa = deadlock_api.buscar_fontes()
@@ -96,21 +123,25 @@ def _fontes():
         raise DeadlockCardError("sem fonte oficial")
     if arq_display is None:
         arq_display = arq_bold  # reserva: radiance no lugar da retail
-    cache: dict = {}
 
     def pegar(estilo: str, tamanho: int):
         chave = (estilo, tamanho)
-        if chave not in cache:
-            arq = {
-                "display": arq_display,
-                "texto": arq_texto,
-                "texto_bold": arq_bold,
-            }[estilo]
-            try:
-                cache[chave] = ImageFont.truetype(str(arq), tamanho)
-            except Exception as e:
-                raise DeadlockCardError(f"fonte quebrou: {e}") from e
-        return cache[chave]
+        with _CACHE_LOCK:
+            hit = _FONT_CACHE.get(chave)
+        if hit is not None:
+            return hit
+        arq = {
+            "display": arq_display,
+            "texto": arq_texto,
+            "texto_bold": arq_bold,
+        }[estilo]
+        try:
+            fonte = ImageFont.truetype(str(arq), tamanho)
+        except Exception as e:
+            raise DeadlockCardError(f"fonte quebrou: {e}") from e
+        with _CACHE_LOCK:
+            _FONT_CACHE[chave] = fonte
+        return fonte
 
     return pegar
 
@@ -128,6 +159,11 @@ def _arredondar(img: Image.Image, raio: int) -> Image.Image:
 
 def _retrato(url: str | None, nome_arquivo: str, tamanho: int) -> Image.Image | None:
     """retrato quadrado arredondado. None se nao baixar/abrir."""
+    chave = (nome_arquivo, tamanho)
+    with _CACHE_LOCK:
+        hit = _IMG_CACHE.get(chave)
+    if hit is not None:
+        return hit
     arq = _baixar(url, nome_arquivo)
     if arq is None:
         return None
@@ -139,9 +175,12 @@ def _retrato(url: str | None, nome_arquivo: str, tamanho: int) -> Image.Image | 
             topo = (img.size[1] - lado) // 2
             img = img.crop((esq, topo, esq + lado, topo + lado))
             img = img.resize((tamanho, tamanho), Image.LANCZOS)
-            return _arredondar(img, tamanho // 4)
+            resultado = _arredondar(img, tamanho // 4)
     except Exception:
         return None
+    with _CACHE_LOCK:
+        _IMG_CACHE[chave] = resultado
+    return resultado
 
 
 # ─── desenho ───
@@ -154,7 +193,7 @@ def _barra(
     largura: int,
     altura: int,
     fracao: float,
-    cor: tuple = VERDE,
+    cor: tuple = VIOLETA,
 ):
     fracao = max(0.0, min(1.0, fracao))
     desenho.rounded_rectangle([x, y, x + largura, y + altura], altura // 2, fill=BORDA)
@@ -215,7 +254,7 @@ def _cabecalho(
         (rx, ry),
         _seguro(rank_txt) or "obscurus",
         font=pegar("display", 32),
-        fill=TEXTO,
+        fill=VIOLETA_CLARO,
     )
     return y + 150
 
@@ -246,12 +285,29 @@ def _numeros(
 def render(pacote: dict, periodo: str) -> bytes:
     """card png do stats. periodo: geral ou 7d. retorna os bytes."""
     try:
-        pegar = _fontes()
         r = pacote["resumo"]
         rank_assets = deadlock_api.buscar_rank_assets()
         tier = int(pacote.get("tier", 0) or 0)
         url_rank = (rank_assets.get(tier) or {}).get("imagem")
         retratos: dict = pacote.get("retratos", {})
+
+        # prefetch paralelo: fontes + retratos + rank de uma vez.
+        # sem isso o primeiro card pagava ~10 downloads em fila.
+        mapa_fontes = deadlock_api.buscar_fontes()
+        pares = [
+            (ARQ_DISPLAY, mapa_fontes.get(ARQ_DISPLAY)),
+            (ARQ_TEXTO, mapa_fontes.get(ARQ_TEXTO)),
+            (ARQ_TEXTO_BOLD, mapa_fontes.get(ARQ_TEXTO_BOLD)),
+            (f"rank_{tier}.png", url_rank),
+        ]
+        if periodo == "7d":
+            hid_sem = int(r.get("heroi_top", 0) or 0)
+            pares.append((f"heroi_{hid_sem}.png", retratos.get(hid_sem)))
+        else:
+            for hid, _, _ in r.get("top", []):
+                pares.append((f"heroi_{hid}.png", retratos.get(hid)))
+        _baixar_todos(pares)
+        pegar = _fontes()
 
         if periodo == "7d":
             hid_top = int(r.get("heroi_top", 0) or 0)

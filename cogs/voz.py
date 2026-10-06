@@ -23,6 +23,36 @@ AUDIO_OI = Path(__file__).parent.parent / "kkkiaimen.mp3"
 # um oi a cada 30s por servidor: sem isso entra-e-sai vira spam.
 OI_COOLDOWN = 30
 
+# a voz do host vive quebrada: o disconnect do discord.py espera
+# ate 60s pela confirmacao. timeout curto pra nunca congelar comando.
+TIMEOUT_SAIR = 8
+TIMEOUT_ENTRAR = 30
+TIMEOUT_MOVER = 20
+
+
+async def _desconectar(vc, onde: str) -> bool:
+    """desconecta com timeout curto. True se ok."""
+    try:
+        await asyncio.wait_for(vc.disconnect(force=True), timeout=TIMEOUT_SAIR)
+        return True
+    except asyncio.TimeoutError:
+        log.warning("%s: disconnect travou, seguindo mesmo assim", onde)
+        return False
+    except Exception:
+        log.exception("%s: disconnect falhou", onde)
+        return False
+
+
+def _fonte_oi():
+    """audio do oi em opus direto: sem re-encode, sem libopus.
+
+    O FFmpegPCMAudio decodifica pra PCM e o discord.py re-encoda
+    pra opus (precisa de libopus no host). O OpusAudio ja sai
+    transcodificado do ffmpeg e vai direto pro fio. bitrate 64k
+    bate com a voz padrao e pesa menos no host.
+    """
+    return discord.FFmpegOpusAudio(str(AUDIO_OI), bitrate=64)
+
 
 def _tocar_oi(vc) -> str | None:
     """tenta tocar o oi. retorna o erro amigavel ou None se tocou."""
@@ -37,11 +67,15 @@ def _tocar_oi(vc) -> str | None:
         log.warning("audio de boas-vindas nao encontrado: %s", AUDIO_OI)
         return "o mp3 sumiu do deploy!"
     try:
-        vc.play(discord.FFmpegPCMAudio(str(AUDIO_OI)), after=_depois_oi)
+        vc.play(_fonte_oi(), after=_depois_oi)
         return None
-    except FileNotFoundError:
-        log.error("ffmpeg nao encontrado no host — sem audio na call")
-        return "ffmpeg nao encontrado no host — sem audio na call."
+    except discord.ClientException as erro:
+        # ffmpeg ausente vem como ClientException, nao FileNotFoundError.
+        if "was not found" in str(erro):
+            log.error("ffmpeg nao encontrado no host — sem audio na call")
+            return "ffmpeg nao encontrado no host — sem audio na call."
+        log.warning("voz ocupada na hora do oi: %s", erro)
+        return "a voz tá ocupada, tenta de novo em uns segundos!"
     except Exception:
         log.exception("nao consegui tocar o oi")
         return "deu ruim tentando tocar o oi!"
@@ -89,10 +123,7 @@ class Voz(commands.Cog, name="Voz"):
         """limpa voz morta e conecta. False se falhar."""
         vc = guild.voice_client
         if vc is not None and not vc.is_connected():
-            try:
-                await vc.disconnect(force=True)
-            except Exception:
-                pass
+            await _desconectar(vc, "rejoin")
             vc = None
             log.info("limpei voz morta")
         if vc is not None:
@@ -101,9 +132,12 @@ class Voz(commands.Cog, name="Voz"):
             canal = guild.get_channel(canal_id)
             if canal is None:
                 canal = await self.bot.fetch_channel(canal_id)
-            await canal.connect()
+            await asyncio.wait_for(canal.connect(), timeout=TIMEOUT_ENTRAR)
             log.info("%s %d", msg_ok, canal_id)
             return True
+        except asyncio.TimeoutError:
+            log.warning("voz demorou demais na call %d", canal_id)
+            return False
         except Exception:
             log.exception("nao consegui conectar na call %d", canal_id)
             return False
@@ -118,6 +152,18 @@ class Voz(commands.Cog, name="Voz"):
             vc = guild.voice_client
             if vc is not None and vc.is_connected():
                 return
+            try:
+                canal = guild.get_channel(channel_id)
+                if canal is None:
+                    canal = await self.bot.fetch_channel(channel_id)
+            except (discord.NotFound, discord.Forbidden):
+                # call sumiu ou perdi acesso: desfixa pra nao tentar pra sempre.
+                await asyncio.to_thread(data.soltar_voz, guild_id)
+                return
+            except Exception:
+                log.exception("falha ao voltar pra call, tento de novo")
+                await asyncio.sleep(10)
+                continue
             if await self._conectar_limpo(guild, channel_id, "voltei pra call fixada"):
                 return
             await asyncio.sleep(10)
@@ -142,19 +188,13 @@ class Voz(commands.Cog, name="Voz"):
         agora = time.monotonic()
         if agora - self._ultimo_oi.get(membro.guild.id, 0) < OI_COOLDOWN:
             return
-        if vc.is_playing():
-            return
-        if not AUDIO_OI.exists():
-            log.warning("audio de boas-vindas nao encontrado: %s", AUDIO_OI)
-            return
-        try:
-            vc.play(discord.FFmpegPCMAudio(str(AUDIO_OI)), after=_depois_oi)
+        # mesmo caminho do >oi: erro aqui so loga, nunca fala no chat.
+        erro = _tocar_oi(vc)
+        if erro is None:
             self._ultimo_oi[membro.guild.id] = agora
             log.info("oi pra %s na call", membro.display_name)
-        except FileNotFoundError:
-            log.error("ffmpeg nao encontrado no host — sem audio na call")
-        except Exception:
-            log.exception("nao consegui tocar o audio de boas-vindas")
+        else:
+            log.warning("oi auto falhou: %s", erro)
 
     # ─── >call ───
     @commands.command(name="call")
@@ -182,17 +222,22 @@ class Voz(commands.Cog, name="Voz"):
 
             vc = ctx.voice_client
             if vc is not None and not vc.is_connected():
-                try:
-                    await vc.disconnect(force=True)
-                except Exception:
-                    pass
+                await _desconectar(vc, ">call")
                 vc = None
                 log.info("limpei voz morta no >call")
 
-            if vc is not None:
-                await vc.move_to(canal)
-            else:
-                await canal.connect()
+            try:
+                if vc is not None:
+                    await asyncio.wait_for(vc.move_to(canal), timeout=TIMEOUT_MOVER)
+                else:
+                    await asyncio.wait_for(canal.connect(), timeout=TIMEOUT_ENTRAR)
+            except asyncio.TimeoutError:
+                log.warning(">call: voz demorou demais")
+                await ctx.send(
+                    "a voz tá demorando pra responder (rede do host tá lenta). "
+                    "tenta de novo em uns segundos — se eu entrar, eu fico!"
+                )
+                return
             await asyncio.to_thread(data.fixar_voz, ctx.guild.id, canal.id)
             await ctx.send(f"tô na call **{canal.name}**!")
         except Exception as erro:
@@ -231,16 +276,28 @@ class Voz(commands.Cog, name="Voz"):
                 return
             vc = interaction.guild.voice_client
             if vc is not None and not vc.is_connected():
-                try:
-                    await vc.disconnect(force=True)
-                except Exception:
-                    pass
+                await _desconectar(vc, "/call")
                 vc = None
                 log.info("limpei voz morta no /call")
-            if vc is not None:
-                await vc.move_to(canal)
-            else:
-                await canal.connect()
+            try:
+                if vc is not None:
+                    await asyncio.wait_for(vc.move_to(canal), timeout=TIMEOUT_MOVER)
+                else:
+                    await asyncio.wait_for(canal.connect(), timeout=TIMEOUT_ENTRAR)
+            except asyncio.TimeoutError:
+                log.warning("/call: voz demorou demais")
+                texto = (
+                    "a voz tá demorando pra responder (rede do host tá lenta). "
+                    "tenta de novo em uns segundos — se eu entrar, eu fico!"
+                )
+                try:
+                    if interaction.response.is_done():
+                        await interaction.followup.send(texto, ephemeral=True)
+                    else:
+                        await interaction.response.send_message(texto, ephemeral=True)
+                except discord.DiscordException:
+                    pass
+                return
             await asyncio.to_thread(data.fixar_voz, interaction.guild.id, canal.id)
             await interaction.response.send_message(f"tô na call **{canal.name}**!")
         except Exception as erro:
@@ -263,10 +320,9 @@ class Voz(commands.Cog, name="Voz"):
             await ctx.send("não estou em call")
             return
         await asyncio.to_thread(data.soltar_voz, ctx.guild.id)
-        try:
-            await vc.disconnect(force=True)
-        except Exception:
-            log.exception("sair: disconnect falhou, banco ja solto")
+        # banco solto primeiro: mesmo se o disconnect travar,
+        # nada tenta me botar de volta. resposta sempre sai.
+        await _desconectar(vc, ">sair")
         await ctx.send("saí da call!")
 
     # ─── /sair ───
@@ -278,10 +334,7 @@ class Voz(commands.Cog, name="Voz"):
             await interaction.response.send_message("não estou em call", ephemeral=True)
             return
         await asyncio.to_thread(data.soltar_voz, interaction.guild.id)
-        try:
-            await vc.disconnect(force=True)
-        except Exception:
-            log.exception("sair: disconnect falhou, banco ja solto")
+        await _desconectar(vc, "/sair")
         await interaction.response.send_message("saí da call!")
 
     # ─── >oi ───

@@ -11,7 +11,7 @@ log = logging.getLogger("alt.tickets")
 
 # ─── configure aqui ou no .env ───
 MOD_ROLE_ID       = int(os.getenv("MOD_ROLE_ID", "0"))
-TICKET_CHANNEL_ID = int(os.getenv("TICKET_CHANNEL_ID", "0"))
+TICKET_CHANNEL_ID = int(os.getenv("TICKET_CHANNEL_ID", "1148417761987534918") or 0)
 TICKET_BANNER_URL = os.getenv("TICKET_BANNER_URL", "")
 # ─────────────────────────────────────────────────────────────
 

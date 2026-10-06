@@ -8,6 +8,8 @@ import inspect
 import logging
 import os
 import sys
+import time
+from pathlib import Path
 
 import visual
 import data
@@ -104,18 +106,59 @@ async def _voltar_call(guild_id: int, channel_id: int, tentativas: int = 3):
             await asyncio.sleep(10)
 
 
+# audio de boas-vindas: toca quando alguem entra na call do bot.
+# caminho absoluto pra nao depender de onde o app foi aberto.
+AUDIO_OI = Path(__file__).parent / "kkkiaimen.mp3"
+
+# um oi a cada 30s por servidor: sem isso entra-e-sai vira spam.
+OI_COOLDOWN = 30
+_ultimo_oi: dict[int, float] = {}
+
+
+async def _oi_quem_chegou(membro, antes, depois):
+    # ignora bot (senao um bot entrando vira festa infinita).
+    if membro.bot:
+        return
+    vc = membro.guild.voice_client
+    if vc is None or not vc.is_connected():
+        return
+    # so conta entrar na call do bot: sair ou mutar nao conta.
+    if depois.channel is None or depois.channel.id != vc.channel.id:
+        return
+    if antes.channel is not None and antes.channel.id == vc.channel.id:
+        return
+    agora = time.monotonic()
+    if agora - _ultimo_oi.get(membro.guild.id, 0) < OI_COOLDOWN:
+        return
+    if vc.is_playing():
+        return
+    if not AUDIO_OI.exists():
+        log.warning("audio de boas-vindas nao encontrado: %s", AUDIO_OI)
+        return
+    try:
+        vc.play(discord.FFmpegPCMAudio(str(AUDIO_OI)))
+        _ultimo_oi[membro.guild.id] = agora
+        log.info("oi pra %s na call", membro.display_name)
+    except FileNotFoundError:
+        log.error("ffmpeg nao encontrado no host — sem audio na call")
+    except Exception:
+        log.exception("nao consegui tocar o audio de boas-vindas")
+
+
 @bot.event
 async def on_voice_state_update(membro, antes, depois):
-    # so interessa a queda do proprio bot.
-    if bot.user is None or membro.id != bot.user.id:
+    # queda do proprio bot: volta pra fixada.
+    if bot.user is not None and membro.id == bot.user.id:
+        if depois.channel is not None or antes.channel is None:
+            return
+        canal_id = await asyncio.to_thread(data.voz_fixa, membro.guild.id)
+        if canal_id is None:
+            return
+        log.info("cai da call, voltando pra fixada %d", canal_id)
+        asyncio.create_task(_voltar_call(membro.guild.id, canal_id))
         return
-    if depois.channel is not None or antes.channel is None:
-        return
-    canal_id = await asyncio.to_thread(data.voz_fixa, membro.guild.id)
-    if canal_id is None:
-        return
-    log.info("cai da call, voltando pra fixada %d", canal_id)
-    asyncio.create_task(_voltar_call(membro.guild.id, canal_id))
+    # boas-vindas: alguem entrou na call onde o bot esta, toca o audio.
+    await _oi_quem_chegou(membro, antes, depois)
 
 
 @bot.event

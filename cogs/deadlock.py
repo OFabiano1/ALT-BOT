@@ -116,7 +116,6 @@ def _separar_args_stats(texto: str) -> tuple[str | None, str]:
 
 def _carregar_stats(account_id: int, periodo: str) -> dict:
     # tudo que o embed precisa, numa thread só pra nao travar o loop.
-    hero_assets = deadlock_api.buscar_hero_assets()
     # as chamadas sao independentes: vao juntas em paralelo.
     with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
         f_rank = ex.submit(deadlock_api.buscar_rank, account_id)

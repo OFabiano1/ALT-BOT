@@ -90,6 +90,7 @@ FOOTER = "Player to Player • Axolotl BR"
 # ─── categorias da ajuda ───
 CATEGORIAS = {
     "Geral":     "Geral",
+    "Voz":       "Voz",
     "jogos":     "Jogos",
     "Níveis":    "Níveis",
     "tickets":   "Tickets",

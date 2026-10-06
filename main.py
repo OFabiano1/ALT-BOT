@@ -8,8 +8,6 @@ import inspect
 import logging
 import os
 import sys
-import time
-from pathlib import Path
 
 import visual
 import data
@@ -29,6 +27,7 @@ COGS = (
     "cogs.mudae",
     "cogs.halloween",
     "cogs.deadlock",
+    "cogs.voz",
 )
 
 # so liga o minimo: sem `guild_messages` o `>` nem chega,
@@ -68,130 +67,6 @@ async def on_ready():
         log.info("slash commands sincronizados globalmente: %d", len(synced))
 
     log.info("%s online — %s", bot.user, visual.FOOTER)
-
-    # volta pras calls fixadas (sobrevive a restart e queda).
-    for guild in bot.guilds:
-        canal_id = await asyncio.to_thread(data.voz_fixa, guild.id)
-        if canal_id is None:
-            continue
-        vc = guild.voice_client
-        if vc is not None and not vc.is_connected():
-            # voz morta: limpa pra conectar do zero.
-            try:
-                await vc.disconnect(force=True)
-            except Exception:
-                pass
-            vc = None
-            log.info("limpei voz morta no boot")
-        if vc is None:
-            try:
-                canal = guild.get_channel(canal_id)
-                if canal is None:
-                    canal = await bot.fetch_channel(canal_id)
-                await canal.connect()
-                log.info("voltei pra call fixada %d", canal_id)
-            except Exception:
-                log.exception("nao consegui voltar pra call fixada %d", canal_id)
-
-
-async def _voltar_call(guild_id: int, channel_id: int, tentativas: int = 3):
-    # espera um pouco pra nao brigar com queda rapida seguida.
-    await asyncio.sleep(5)
-    for _ in range(tentativas):
-        guild = bot.get_guild(guild_id)
-        if guild is None:
-            return
-        vc = guild.voice_client
-        if vc is not None and vc.is_connected():
-            return
-        if vc is not None:
-            # voz morta: limpa pra conectar do zero.
-            try:
-                await vc.disconnect(force=True)
-            except Exception:
-                pass
-            log.info("limpei voz morta, tentando de novo")
-        try:
-            canal = guild.get_channel(channel_id)
-            if canal is None:
-                canal = await bot.fetch_channel(channel_id)
-            await canal.connect()
-            log.info("voltei pra call fixada %d", channel_id)
-            return
-        except (discord.NotFound, discord.Forbidden):
-            # call sumiu ou perdi acesso: desfixa pra nao tentar pra sempre.
-            await asyncio.to_thread(data.soltar_voz, guild_id)
-            return
-        except Exception:
-            log.exception("falha ao voltar pra call, tento de novo")
-            await asyncio.sleep(10)
-
-
-# audio de boas-vindas: toca quando alguem entra na call do bot.
-# caminho absoluto pra nao depender de onde o app foi aberto.
-AUDIO_OI = Path(__file__).parent / "kkkiaimen.mp3"
-
-# um oi a cada 30s por servidor: sem isso entra-e-sai vira spam.
-OI_COOLDOWN = 30
-_ultimo_oi: dict[int, float] = {}
-
-
-async def _oi_quem_chegou(membro, antes, depois):
-    # ignora bot (senao um bot entrando vira festa infinita).
-    if membro.bot:
-        return
-    # so conta entrar numa call: sair ou mutar nao conta.
-    if depois.channel is None:
-        return
-    if antes.channel is not None and antes.channel.id == depois.channel.id:
-        return
-    vc = membro.guild.voice_client
-    if vc is None or not vc.is_connected():
-        log.info(
-            "%s entrou na call mas nao estou la — sem oi", membro.display_name
-        )
-        return
-    # so conta entrar na mesma call do bot.
-    if depois.channel.id != vc.channel.id:
-        return
-    agora = time.monotonic()
-    if agora - _ultimo_oi.get(membro.guild.id, 0) < OI_COOLDOWN:
-        return
-    if vc.is_playing():
-        return
-    if not AUDIO_OI.exists():
-        log.warning("audio de boas-vindas nao encontrado: %s", AUDIO_OI)
-        return
-    try:
-        vc.play(discord.FFmpegPCMAudio(str(AUDIO_OI)), after=_depois_oi)
-        _ultimo_oi[membro.guild.id] = agora
-        log.info("oi pra %s na call", membro.display_name)
-    except FileNotFoundError:
-        log.error("ffmpeg nao encontrado no host — sem audio na call")
-    except Exception:
-        log.exception("nao consegui tocar o audio de boas-vindas")
-
-
-def _depois_oi(erro):
-    # o ffmpeg roda em thread propria: erro depois do play so aparece aqui.
-    if erro:
-        log.error("audio de boas-vindas falhou no meio: %s", erro)
-
-
-@bot.event
-async def on_voice_state_update(membro, antes, depois):
-    # queda do proprio bot: volta pra fixada.
-    if bot.user is not None and membro.id == bot.user.id:
-        if depois.channel is not None or antes.channel is None:
-            return
-        canal_id = await asyncio.to_thread(data.voz_fixa, membro.guild.id)
-        if canal_id is None:
-            return
-        log.info("cai da call, voltando pra fixada %d", canal_id)
-        asyncio.create_task(_voltar_call(membro.guild.id, canal_id))
-        return
-    # boas-vindas: alguem entrou na call onde o bot esta, toca o audio.
-    await _oi_quem_chegou(membro, antes, depois)
 
 
 @bot.event
@@ -288,6 +163,7 @@ async def slash_ping(interaction: discord.Interaction):
 # ajuda
 ORDEM_AJUDA = (
     "Geral",
+    "Voz",
     "Deadlock",
     "Níveis",
     "jogos",
@@ -308,6 +184,7 @@ AJUDA_BANNER_URL = os.getenv(
 # emoji de cada secao (pela titulo exibido).
 CATEGORIA_EMOJIS = {
     "Geral": "✨",
+    "Voz": "🔊",
     "Deadlock": "🎮",
     "Níveis": "⭐",
     "Jogos": "🎲",
@@ -545,162 +422,6 @@ async def ajuda_slash(interaction: discord.Interaction):
         view=AjudaView(_linhas_ajuda(travas)),
         ephemeral=True,
     )
-
-
-# call
-@bot.command(name="call")
-async def call(ctx):
-    """entra na call de voz que você está."""
-    try:
-        if ctx.author.voice is None or ctx.author.voice.channel is None:
-            await ctx.send("você precisa estar em uma call de voz para eu entrar!")
-            return
-
-        canal = ctx.author.voice.channel
-
-        permissoes = canal.permissions_for(ctx.guild.me)
-        if not permissoes.connect:
-            await ctx.send(f"não tenho permissão de **conectar** no canal **{canal.name}**!")
-            return
-        if not permissoes.speak:
-            await ctx.send(f"não tenho permissão de **falar** no canal **{canal.name}**!")
-            return
-
-        if ctx.voice_client is not None and not ctx.voice_client.is_connected():
-            # voz morta: limpa pra conectar do zero.
-            try:
-                await ctx.voice_client.disconnect(force=True)
-            except Exception:
-                pass
-            log.info("limpei voz morta no >call")
-
-        if ctx.voice_client is not None:
-            await ctx.voice_client.move_to(canal)
-            await asyncio.to_thread(data.fixar_voz, ctx.guild.id, canal.id)
-            await ctx.send(f"fui pra **{canal.name}**!")
-            return
-
-        await canal.connect()
-        await asyncio.to_thread(data.fixar_voz, ctx.guild.id, canal.id)
-        await ctx.send(f"tô na call **{canal.name}**!")
-    except Exception as erro:
-        log.exception("falha ao entrar na call")
-        await ctx.send(f"não consegui entrar na call: `{type(erro).__name__}`")
-
-
-@bot.tree.command(name="call", description="me chama pra call de voz que você tá.")
-async def call_slash(interaction: discord.Interaction):
-    """versão slash do >call."""
-    membro = interaction.user
-    if (
-        interaction.guild is None
-        or not isinstance(membro, discord.Member)
-        or membro.voice is None
-        or membro.voice.channel is None
-    ):
-        await interaction.response.send_message(
-            "você precisa estar em uma call de voz para eu entrar!", ephemeral=True
-        )
-        return
-    canal = membro.voice.channel
-    try:
-        permissoes = canal.permissions_for(interaction.guild.me)
-        if not permissoes.connect:
-            await interaction.response.send_message(
-                f"não tenho permissão de **conectar** no canal **{canal.name}**!",
-                ephemeral=True,
-            )
-            return
-        vc = interaction.guild.voice_client
-        if vc is not None and not vc.is_connected():
-            # voz morta: limpa pra conectar do zero.
-            try:
-                await vc.disconnect(force=True)
-            except Exception:
-                pass
-            log.info("limpei voz morta no /call")
-            vc = None
-        if vc is not None:
-            await vc.move_to(canal)
-        else:
-            await canal.connect()
-        await asyncio.to_thread(data.fixar_voz, interaction.guild.id, canal.id)
-        await interaction.response.send_message(f"tô na call **{canal.name}**!")
-    except Exception as erro:
-        log.exception("falha ao entrar na call (slash)")
-        texto = f"não consegui entrar na call: `{type(erro).__name__}`"
-        try:
-            if interaction.response.is_done():
-                await interaction.followup.send(texto, ephemeral=True)
-            else:
-                await interaction.response.send_message(texto, ephemeral=True)
-        except discord.DiscordException:
-            pass
-
-
-# sair
-@bot.command(name="sair")
-async def sair(ctx):
-    """sai da call de voz."""
-    vc = ctx.voice_client
-    if vc is None:
-        await ctx.send("não estou em call")
-        return
-    await asyncio.to_thread(data.soltar_voz, ctx.guild.id)
-    await vc.disconnect()
-    await ctx.send("saí da call!")
-
-
-@bot.tree.command(name="sair", description="tira o bot da call de voz.")
-async def sair_slash(interaction: discord.Interaction):
-    """versão slash do >sair."""
-    vc = interaction.guild.voice_client if interaction.guild else None
-    if vc is None:
-        await interaction.response.send_message("não estou em call", ephemeral=True)
-        return
-    await asyncio.to_thread(data.soltar_voz, interaction.guild.id)
-    await vc.disconnect()
-    await interaction.response.send_message("saí da call!")
-
-
-# oi
-def _tocar_oi(vc) -> str | None:
-    """tenta tocar o oi. retorna o erro amigavel ou None se tocou."""
-    if vc is None:
-        return "não estou em call — me chama com `>call` primeiro!"
-    if not vc.is_connected():
-        log.warning("voice_client existe mas sem conexao — voz caiu no host")
-        return "minha voz caiu — manda `>sair` e `>call` de novo!"
-    if vc.is_playing():
-        return "já tô tocando algo, calma!"
-    if not AUDIO_OI.exists():
-        return "o mp3 sumiu do deploy!"
-    try:
-        vc.play(discord.FFmpegPCMAudio(str(AUDIO_OI)), after=_depois_oi)
-        return None
-    except FileNotFoundError:
-        return "ffmpeg nao encontrado no host — sem audio na call."
-    except Exception as erro:
-        log.exception("nao consegui tocar o oi manual")
-        return f"deu ruim: `{type(erro).__name__}`"
-
-
-@bot.command(name="oi")
-async def oi(ctx):
-    """toca o audio de boas-vindas na call atual."""
-    erro = _tocar_oi(ctx.voice_client)
-    await ctx.send(f"{visual.AXOLOTL} oi!" if erro is None else erro)
-
-
-@bot.tree.command(name="oi", description="toca o audio de boas-vindas na call atual.")
-async def oi_slash(interaction: discord.Interaction):
-    """versão slash do >oi."""
-    vc = interaction.guild.voice_client if interaction.guild else None
-    erro = _tocar_oi(vc)
-    if erro is None:
-        await interaction.response.send_message(f"{visual.AXOLOTL} oi!")
-    else:
-        await interaction.response.send_message(erro, ephemeral=True)
 
 
 async def main():

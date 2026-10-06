@@ -1,5 +1,7 @@
 # isso aq fica trocando o status do bot (o "jogando..." do perfil).
 
+import random
+
 import discord
 from discord.ext import commands, tasks
 
@@ -29,7 +31,6 @@ class Status(commands.Cog, name="Status"):
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.index = 0
 
     @commands.Cog.listener()
     async def on_ready(self):
@@ -38,8 +39,7 @@ class Status(commands.Cog, name="Status"):
 
     @tasks.loop(seconds=INTERVALO)
     async def trocar_status(self):
-        tipo, texto = STATUSES[self.index % len(STATUSES)]
-        self.index += 1
+        tipo, texto = random.choice(STATUSES)
 
         atividades = {
             "jogando":    discord.Game(name=texto),

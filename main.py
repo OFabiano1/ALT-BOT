@@ -72,7 +72,18 @@ async def on_ready():
     # volta pras calls fixadas (sobrevive a restart e queda).
     for guild in bot.guilds:
         canal_id = await asyncio.to_thread(data.voz_fixa, guild.id)
-        if canal_id is not None and guild.voice_client is None:
+        if canal_id is None:
+            continue
+        vc = guild.voice_client
+        if vc is not None and not vc.is_connected():
+            # voz morta: limpa pra conectar do zero.
+            try:
+                await vc.disconnect(force=True)
+            except Exception:
+                pass
+            vc = None
+            log.info("limpei voz morta no boot")
+        if vc is None:
             try:
                 canal = guild.get_channel(canal_id)
                 if canal is None:
@@ -88,8 +99,18 @@ async def _voltar_call(guild_id: int, channel_id: int, tentativas: int = 3):
     await asyncio.sleep(5)
     for _ in range(tentativas):
         guild = bot.get_guild(guild_id)
-        if guild is None or guild.voice_client is not None:
+        if guild is None:
             return
+        vc = guild.voice_client
+        if vc is not None and vc.is_connected():
+            return
+        if vc is not None:
+            # voz morta: limpa pra conectar do zero.
+            try:
+                await vc.disconnect(force=True)
+            except Exception:
+                pass
+            log.info("limpei voz morta, tentando de novo")
         try:
             canal = guild.get_channel(channel_id)
             if canal is None:
@@ -545,6 +566,14 @@ async def call(ctx):
             await ctx.send(f"não tenho permissão de **falar** no canal **{canal.name}**!")
             return
 
+        if ctx.voice_client is not None and not ctx.voice_client.is_connected():
+            # voz morta: limpa pra conectar do zero.
+            try:
+                await ctx.voice_client.disconnect(force=True)
+            except Exception:
+                pass
+            log.info("limpei voz morta no >call")
+
         if ctx.voice_client is not None:
             await ctx.voice_client.move_to(canal)
             await asyncio.to_thread(data.fixar_voz, ctx.guild.id, canal.id)
@@ -583,6 +612,14 @@ async def call_slash(interaction: discord.Interaction):
             )
             return
         vc = interaction.guild.voice_client
+        if vc is not None and not vc.is_connected():
+            # voz morta: limpa pra conectar do zero.
+            try:
+                await vc.disconnect(force=True)
+            except Exception:
+                pass
+            log.info("limpei voz morta no /call")
+            vc = None
         if vc is not None:
             await vc.move_to(canal)
         else:

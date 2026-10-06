@@ -210,6 +210,19 @@ async def slash_ping(interaction: discord.Interaction):
 
 
 # ajuda
+ORDEM_AJUDA = (
+    "Geral",
+    "Deadlock",
+    "Níveis",
+    "jogos",
+    "Economia",
+    "tickets",
+    "Mudae",
+    "Halloween",
+    "Status",
+)
+
+
 def _grupos_comandos() -> dict[str, list[tuple[str, str | None]]]:
     """comandos de prefixo agrupados: {categoria: [(nome, doc)]}."""
     grupos: dict[str, list[tuple[str, str | None]]] = {}
@@ -221,23 +234,77 @@ def _grupos_comandos() -> dict[str, list[tuple[str, str | None]]]:
     return grupos
 
 
-def _embed_ajuda(linhas_por_categoria: dict[str, list[str]]) -> discord.Embed:
+def _slash_por_nome() -> dict[str, app_commands.Command]:
+    """todos os slash indexados por nome."""
+    return {c.name: c for c in bot.tree.walk_commands()}
+
+
+def _categoria_slash() -> dict[str, str]:
+    """nome do slash -> categoria (nome da cog ou Geral)."""
+    mapa: dict[str, str] = {}
+    for cog in bot.cogs.values():
+        for cmd in cog.get_app_commands():
+            mapa[cmd.name] = cog.qualified_name
+    for nome in _slash_por_nome():
+        mapa.setdefault(nome, "Geral")
+    return mapa
+
+
+def _linhas_ajuda(travas: dict[str, str]) -> list[tuple[str, list[str]]]:
+    """seções ordenadas [(titulo, linhas)]. `>` e `/` gêmeos na mesma linha."""
+    prefix = _grupos_comandos()
+    slash = _slash_por_nome()
+    cat_slash = _categoria_slash()
+    slash_por_cat: dict[str, list[app_commands.Command]] = {}
+    for nome, cmd in slash.items():
+        if nome == "ajuda":
+            continue
+        slash_por_cat.setdefault(cat_slash.get(nome, "Geral"), []).append(cmd)
+
+    chaves = [c for c in ORDEM_AJUDA if c in prefix or c in slash_por_cat]
+    chaves += [c for c in list(prefix) + list(slash_por_cat) if c not in chaves]
+    secoes: list[tuple[str, list[str]]] = []
+    for chave in chaves:
+        linhas: list[str] = []
+        fundidos: set[str] = set()
+        for nome, doc in sorted(prefix.get(chave, [])):
+            gemeo = slash.get(nome)
+            if gemeo is not None and cat_slash.get(nome) == chave:
+                uso = f"`>{nome}` `/{nome}`"
+                fundidos.add(nome)
+                trava = travas.get(f">{nome}", "") or travas.get(f"/{nome}", "")
+            else:
+                uso = f"`>{nome}`"
+                trava = travas.get(f">{nome}", "")
+            if trava:
+                uso += f" {trava}"
+            if doc:
+                uso += f" — {doc}"
+            linhas.append(uso)
+        for cmd in sorted(slash_por_cat.get(chave, []), key=lambda c: c.name):
+            if cmd.name in fundidos:
+                continue
+            uso = f"`/{cmd.name}`"
+            trava = travas.get(f"/{cmd.name}", "")
+            if trava:
+                uso += f" {trava}"
+            if cmd.description:
+                uso += f" — {cmd.description}"
+            linhas.append(uso)
+        if linhas:
+            secoes.append((visual.CATEGORIAS.get(chave, chave), linhas))
+    return secoes
+
+
+def _embed_ajuda(secoes: list[tuple[str, list[str]]]) -> discord.Embed:
     """monta o embed da ajuda. Usado pelo `>` e pelo `/`."""
     embed = discord.Embed(
         title=f"{visual.AXOLOTL} Comandos do ALT",
         description="funciono com `>` e com `/` — usa o que preferir.",
         color=visual.PRIMARY,
     )
-    for chave, linhas in linhas_por_categoria.items():
-        embed.add_field(
-            name=visual.CATEGORIAS.get(chave, chave),
-            value="\n".join(linhas),
-            inline=False,
-        )
-    slash = " ".join(
-        f"`/{c.name}`" for c in sorted(bot.tree.walk_commands(), key=lambda c: c.name)
-    )
-    embed.add_field(name="slash", value=slash or "`/ping`", inline=False)
+    for titulo, linhas in secoes:
+        embed.add_field(name=titulo, value="\n".join(linhas), inline=False)
     embed.set_footer(text=visual.FOOTER)
     return embed
 
@@ -263,34 +330,37 @@ async def ajuda(ctx):
                 return "restrito"
         return ""
 
-    linhas: dict[str, list[str]] = {}
-    for chave, cmds in _grupos_comandos().items():
-        grupo = []
-        for nome, doc in cmds:
+    travas: dict[str, str] = {}
+    for cmds in _grupos_comandos().values():
+        for nome, _doc in cmds:
             cmd = bot.get_command(nome)
             trava = await permissao(cmd) if cmd else ""
-            uso = f"`>{nome} {trava}`".rstrip()
-            if doc:
-                uso += f" — {doc}"
-            grupo.append(uso)
-        linhas[chave] = grupo
-    await ctx.send(embed=_embed_ajuda(linhas))
+            if trava:
+                travas[f">{nome}"] = trava
+    await ctx.send(embed=_embed_ajuda(_linhas_ajuda(travas)))
 
 
 @bot.tree.command(name="ajuda", description="mostra todos os comandos do bot.")
 async def ajuda_slash(interaction: discord.Interaction):
     """versão slash da ajuda (efêmera — só você vê)."""
-    slash_nomes = {c.name for c in bot.tree.walk_commands()}
-    linhas: dict[str, list[str]] = {}
-    for chave, cmds in _grupos_comandos().items():
-        grupo = []
-        for nome, doc in cmds:
-            uso = f"`/{nome}`" if nome in slash_nomes else f"`>{nome}`"
-            if doc:
-                uso += f" — {doc}"
-            grupo.append(uso)
-        linhas[chave] = grupo
-    await interaction.response.send_message(embed=_embed_ajuda(linhas), ephemeral=True)
+    travas: dict[str, str] = {}
+    for cmd in bot.tree.walk_commands():
+        if cmd.name == "ajuda":
+            continue
+        for check in cmd.checks:
+            try:
+                resultado = check(interaction)
+                if inspect.isawaitable(resultado):
+                    resultado = await resultado
+            except app_commands.AppCommandError:
+                travas[f"/{cmd.name}"] = "restrito"
+                break
+            if resultado is False:
+                travas[f"/{cmd.name}"] = "restrito"
+                break
+    await interaction.response.send_message(
+        embed=_embed_ajuda(_linhas_ajuda(travas)), ephemeral=True
+    )
 
 
 # call

@@ -476,6 +476,14 @@ async def main():
             await bot.load_extension(cog)
             log.info("cog carregada: %s", cog)
 
+        # identifica o build no log: se o shardcloud nao puxou o codigo novo,
+        # esses numeros nao batem com o esperado.
+        log.info(
+            "comandos registrados: %d prefixo, %d slash",
+            len(bot.commands),
+            sum(1 for _ in bot.tree.walk_commands()),
+        )
+
         await bot.start(TOKEN)
 
 

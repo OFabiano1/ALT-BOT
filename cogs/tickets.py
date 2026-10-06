@@ -12,7 +12,12 @@ log = logging.getLogger("alt.tickets")
 # ─── configure aqui ou no .env ───
 MOD_ROLE_ID       = int(os.getenv("MOD_ROLE_ID", "0"))
 TICKET_CHANNEL_ID = int(os.getenv("TICKET_CHANNEL_ID", "1148417761987534918") or 0)
-TICKET_BANNER_URL = os.getenv("TICKET_BANNER_URL", "")
+# banner do painel. padrao embutido, mas link de cdn expira:
+# quando cair, bota o link novo no env que ele prevalece.
+TICKET_BANNER_URL = os.getenv(
+    "TICKET_BANNER_URL",
+    "https://cdn.discordapp.com/attachments/1017344173843693628/1556921609275703316/suporte.png?backend=b2&ex=6ac5ebbd&is=6ac49a3d&hm=0d229ce02f5768ea5698b42d6fd344bb0b12b36464be989cc16ce90d7d6fb448&",
+)
 # ─────────────────────────────────────────────────────────────
 
 # 7 dias em minutos — o padrão do Discord, então o ticket não

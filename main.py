@@ -136,13 +136,19 @@ async def _oi_quem_chegou(membro, antes, depois):
         log.warning("audio de boas-vindas nao encontrado: %s", AUDIO_OI)
         return
     try:
-        vc.play(discord.FFmpegPCMAudio(str(AUDIO_OI)))
+        vc.play(discord.FFmpegPCMAudio(str(AUDIO_OI)), after=_depois_oi)
         _ultimo_oi[membro.guild.id] = agora
         log.info("oi pra %s na call", membro.display_name)
     except FileNotFoundError:
         log.error("ffmpeg nao encontrado no host — sem audio na call")
     except Exception:
         log.exception("nao consegui tocar o audio de boas-vindas")
+
+
+def _depois_oi(erro):
+    # o ffmpeg roda em thread propria: erro depois do play so aparece aqui.
+    if erro:
+        log.error("audio de boas-vindas falhou no meio: %s", erro)
 
 
 @bot.event
@@ -612,6 +618,43 @@ async def sair_slash(interaction: discord.Interaction):
     await asyncio.to_thread(data.soltar_voz, interaction.guild.id)
     await vc.disconnect()
     await interaction.response.send_message("saí da call!")
+
+
+# oi
+def _tocar_oi(vc) -> str | None:
+    """tenta tocar o oi. retorna o erro amigavel ou None se tocou."""
+    if vc is None or not vc.is_connected():
+        return "não estou em call — me chama com `>call` primeiro!"
+    if vc.is_playing():
+        return "já tô tocando algo, calma!"
+    if not AUDIO_OI.exists():
+        return "o mp3 sumiu do deploy!"
+    try:
+        vc.play(discord.FFmpegPCMAudio(str(AUDIO_OI)), after=_depois_oi)
+        return None
+    except FileNotFoundError:
+        return "ffmpeg nao encontrado no host — sem audio na call."
+    except Exception as erro:
+        log.exception("nao consegui tocar o oi manual")
+        return f"deu ruim: `{type(erro).__name__}`"
+
+
+@bot.command(name="oi")
+async def oi(ctx):
+    """toca o audio de boas-vindas na call atual."""
+    erro = _tocar_oi(ctx.voice_client)
+    await ctx.send(f"{visual.AXOLOTL} oi!" if erro is None else erro)
+
+
+@bot.tree.command(name="oi", description="toca o audio de boas-vindas na call atual.")
+async def oi_slash(interaction: discord.Interaction):
+    """versão slash do >oi."""
+    vc = interaction.guild.voice_client if interaction.guild else None
+    erro = _tocar_oi(vc)
+    if erro is None:
+        await interaction.response.send_message(f"{visual.AXOLOTL} oi!")
+    else:
+        await interaction.response.send_message(erro, ephemeral=True)
 
 
 async def main():

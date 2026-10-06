@@ -119,13 +119,19 @@ async def _oi_quem_chegou(membro, antes, depois):
     # ignora bot (senao um bot entrando vira festa infinita).
     if membro.bot:
         return
+    # so conta entrar numa call: sair ou mutar nao conta.
+    if depois.channel is None:
+        return
+    if antes.channel is not None and antes.channel.id == depois.channel.id:
+        return
     vc = membro.guild.voice_client
     if vc is None or not vc.is_connected():
+        log.info(
+            "%s entrou na call mas nao estou la — sem oi", membro.display_name
+        )
         return
-    # so conta entrar na call do bot: sair ou mutar nao conta.
-    if depois.channel is None or depois.channel.id != vc.channel.id:
-        return
-    if antes.channel is not None and antes.channel.id == vc.channel.id:
+    # so conta entrar na mesma call do bot.
+    if depois.channel.id != vc.channel.id:
         return
     agora = time.monotonic()
     if agora - _ultimo_oi.get(membro.guild.id, 0) < OI_COOLDOWN:
@@ -623,8 +629,11 @@ async def sair_slash(interaction: discord.Interaction):
 # oi
 def _tocar_oi(vc) -> str | None:
     """tenta tocar o oi. retorna o erro amigavel ou None se tocou."""
-    if vc is None or not vc.is_connected():
+    if vc is None:
         return "não estou em call — me chama com `>call` primeiro!"
+    if not vc.is_connected():
+        log.warning("voice_client existe mas sem conexao — voz caiu no host")
+        return "minha voz caiu — manda `>sair` e `>call` de novo!"
     if vc.is_playing():
         return "já tô tocando algo, calma!"
     if not AUDIO_OI.exists():
@@ -671,9 +680,11 @@ async def main():
             log.info("cog carregada: %s", cog)
 
         # identifica o build no log: se o shardcloud nao puxou o codigo novo,
-        # esses numeros nao batem com o esperado.
+        # esses numeros nao batem com o esperado. o pid entrega
+        # instancia zumbi (dois processos com o mesmo token).
         log.info(
-            "comandos registrados: %d prefixo, %d slash",
+            "boot pid=%d | comandos registrados: %d prefixo, %d slash",
+            os.getpid(),
             len(bot.commands),
             sum(1 for _ in bot.tree.walk_commands()),
         )

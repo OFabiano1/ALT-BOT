@@ -300,7 +300,7 @@ def render(pacote: dict, periodo: str) -> bytes:
             (ARQ_TEXTO_BOLD, mapa_fontes.get(ARQ_TEXTO_BOLD)),
             (f"rank_{tier}.png", url_rank),
         ]
-        if periodo == "7d":
+        if periodo in ("7d", "1d"):
             hid_sem = int(r.get("heroi_top", 0) or 0)
             pares.append((f"heroi_{hid_sem}.png", retratos.get(hid_sem)))
         else:
@@ -309,7 +309,7 @@ def render(pacote: dict, periodo: str) -> bytes:
         _baixar_todos(pares)
         pegar = _fontes()
 
-        if periodo == "7d":
+        if periodo in ("7d", "1d"):
             hid_top = int(r.get("heroi_top", 0) or 0)
             assets_top = pacote.get("hero_assets", {}).get(hid_top, {})
             retrato = _retrato(retratos.get(hid_top), f"heroi_{hid_top}.png", 120)
@@ -353,11 +353,14 @@ def render(pacote: dict, periodo: str) -> bytes:
             )
             y += 44
             nome_top = assets_top.get("nome", f"heroi {hid_top}")
+            vazio_card = (
+                "sem partidas hoje" if periodo == "1d" else "sem partidas nos últimos 7 dias"
+            )
             desenho.text(
                 (MARGEM, y),
                 f"herói mais jogado: {nome_top} ({r['heroi_top_qtd']} partidas)"
                 if r["heroi_top_qtd"]
-                else "sem partidas nos últimos 7 dias",
+                else vazio_card,
                 font=pegar("texto_bold", 28),
                 fill=TEXTO,
             )

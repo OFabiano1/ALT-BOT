@@ -23,8 +23,9 @@ log = logging.getLogger("alt.deadlock")
 
 # menção <@123> ou id cru de discord dentro do >stats.
 _MENCAO = re.compile(r"<@!?(\d+)>")
-# tokens que ligam o modo 7 dias no prefixo.
+# tokens que ligam o modo 7 dias / 1 dia no prefixo.
 _TOKENS_7D = {"7d", "7dias", "7-dias", "semana", "week"}
+_TOKENS_1D = {"1d", "1dia", "1-dia", "dia", "hoje", "today"}
 
 
 def _embed_vinculo() -> discord.Embed:
@@ -101,13 +102,16 @@ class VincularView(discord.ui.View):
 
 
 def _separar_args_stats(texto: str) -> tuple[str | None, str]:
-    # ">stats @alguem 7d" -> (alvo, periodo). periodo é "7d" ou "geral".
+    # ">stats @alguem 7d" -> (alvo, periodo). periodo: 1d, 7d ou geral.
     tokens = (texto or "").split()
     periodo = "geral"
     resto = []
     for t in tokens:
-        if t.strip().lower() in _TOKENS_7D:
+        baixo = t.strip().lower()
+        if baixo in _TOKENS_7D:
             periodo = "7d"
+        elif baixo in _TOKENS_1D:
+            periodo = "1d"
         else:
             resto.append(t)
     alvo = " ".join(resto).strip() or None
@@ -122,9 +126,10 @@ def _carregar_stats(account_id: int, periodo: str) -> dict:
         f_perfil = ex.submit(deadlock_api.buscar_steam_profile, account_id)
         f_heroes = ex.submit(deadlock_api.buscar_hero_assets)
         f_ranks = ex.submit(deadlock_api.buscar_rank_assets)
-        if periodo == "7d":
+        if periodo in ("7d", "1d"):
             resumo = deadlock_api.resumo_7d(
-                ex.submit(deadlock_api.buscar_match_history, account_id).result()
+                ex.submit(deadlock_api.buscar_match_history, account_id).result(),
+                dias=1 if periodo == "1d" else 7,
             )
         else:
             resumo = deadlock_api.resumo_geral(
@@ -141,12 +146,6 @@ def _carregar_stats(account_id: int, periodo: str) -> dict:
         rank_txt = "obscurus"
     else:
         rank_txt = f"{nome_rank} {sub}".strip()
-    if periodo == "7d":
-        hist = deadlock_api.buscar_match_history(account_id)
-        resumo = deadlock_api.resumo_7d(hist)
-    else:
-        hs = deadlock_api.buscar_hero_stats(account_id)
-        resumo = deadlock_api.resumo_geral(hs)
     return {
         "persona": perfil.get("personaname") or f"steam {account_id}",
         "profileurl": perfil.get("profileurl")
@@ -205,9 +204,10 @@ def _embed_stats_geral(pacote: dict) -> discord.Embed:
     return embed
 
 
-def _embed_stats_7d(pacote: dict) -> discord.Embed:
+def _embed_stats_7d(pacote: dict, periodo: str = "7d") -> discord.Embed:
     r = pacote["resumo"]
     nome_top = pacote["heroes"].get(r["heroi_top"], f"heroi {r['heroi_top']}")
+    vazio = "sem partidas hoje." if periodo == "1d" else "sem partidas nos últimos 7 dias."
     desc = (
         f"partidas concluídas: **{r['partidas']}** "
         f"({r['vitorias']} vitórias, {r['derrotas']} derrotas)\n"
@@ -216,9 +216,9 @@ def _embed_stats_7d(pacote: dict) -> discord.Embed:
     if r["heroi_top_qtd"]:
         desc += f"\nherói mais jogado: {visual.deadlock_hero_emoji(nome_top)}{nome_top} ({r['heroi_top_qtd']} partidas)"
     if not r["partidas"]:
-        desc += "\n\nsem partidas nos últimos 7 dias na api."
+        desc += f"\n\n{vazio}"
     embed = discord.Embed(
-        title=f"{pacote['rank_emoji']}{pacote['persona']} · {pacote['rank_txt']} · 7d",
+        title=f"{pacote['rank_emoji']}{pacote['persona']} · {pacote['rank_txt']} · {periodo}",
         description=desc,
         color=visual.PRIMARY,
     )
@@ -282,7 +282,7 @@ def _texto_deadlock() -> str:
         "chama a galera na call e bora.\n\n"
         f"{visual.AXOLOTL} vincula sua steam com `>vincular`\n"
         "e usa `>stats` pra ver rank, win rate e herois.\n"
-        "`>stats 7d` mostra teu resumo semanal."
+        "`>stats 1d` mostra as partidas do dia, `>stats 7d` o resumo semanal."
     )
 
 
@@ -295,7 +295,7 @@ class Deadlock(commands.Cog, name="Deadlock"):
     # ─── >deadlock ───
     @commands.command(name="deadlock")
     async def deadlock(self, ctx: commands.Context):
-        """hub do deadlock: vincular, stats geral e resumo semanal."""
+        """hub do deadlock: vincular, stats geral, 1d e resumo semanal."""
         embed = discord.Embed(
             title=f"{visual.DEADLOCK} Deadlock",
             description=_texto_deadlock(),
@@ -306,7 +306,7 @@ class Deadlock(commands.Cog, name="Deadlock"):
 
     # ─── /deadlock ───
     @app_commands.command(
-        name="deadlock", description="deadlock: vincular, stats e resumo semanal."
+        name="deadlock", description="deadlock: vincular, stats, 1d e resumo semanal."
     )
     async def deadlock_slash(self, interaction: discord.Interaction):
         """versão slash do >deadlock."""
@@ -384,7 +384,7 @@ class Deadlock(commands.Cog, name="Deadlock"):
     # ─── >stats ───
     @commands.command(name="stats")
     async def stats(self, ctx: commands.Context, *, args: str = ""):
-        """stats do deadlock: >stats [@membro|steam] [7d]."""
+        """stats do deadlock: >stats [@membro|steam] [1d|7d]."""
         alvo_txt, periodo = _separar_args_stats(args)
         account_id, aviso = await _resolver_steam_do_stats(
             ctx.guild, ctx.author.id, None, None, alvo_txt
@@ -401,20 +401,25 @@ class Deadlock(commands.Cog, name="Deadlock"):
         except deadlock_api.DeadlockAPIError as e:
             await ctx.send(f"deu ruim buscando na api: `{e}`. tenta de novo em uns segundos.")
             return
-        embed = _embed_stats_7d(pacote) if periodo == "7d" else _embed_stats_geral(pacote)
+        embed = (
+            _embed_stats_7d(pacote, periodo)
+            if periodo in ("7d", "1d")
+            else _embed_stats_geral(pacote)
+        )
         arquivo = await _anexar_card(pacote, periodo, embed)
         await ctx.send(embed=embed, file=arquivo)
 
     # ─── /stats ───
-    @app_commands.command(name="stats", description="stats do deadlock (geral ou 7 dias).")
+    @app_commands.command(name="stats", description="stats do deadlock (geral, 1 dia ou 7 dias).")
     @app_commands.describe(
         membro="ver o stats de outro membro (precisa de vínculo)",
         steam="id, link ou nome da steam (consulta avulsa, sem salvar)",
-        periodo="geral ou últimos 7 dias",
+        periodo="geral, 1 dia ou últimos 7 dias",
     )
     @app_commands.choices(
         periodo=[
             app_commands.Choice(name="geral", value="geral"),
+            app_commands.Choice(name="1 dia", value="1d"),
             app_commands.Choice(name="7 dias", value="7d"),
         ]
     )
@@ -426,7 +431,7 @@ class Deadlock(commands.Cog, name="Deadlock"):
         periodo: str = "geral",
     ):
         """versão slash do >stats."""
-        if periodo not in ("geral", "7d"):
+        if periodo not in ("geral", "7d", "1d"):
             periodo = "geral"
         await interaction.response.defer()
         account_id, aviso = await _resolver_steam_do_stats(
@@ -447,7 +452,11 @@ class Deadlock(commands.Cog, name="Deadlock"):
                 f"deu ruim buscando na api: `{e}`. tenta de novo em uns segundos."
             )
             return
-        embed = _embed_stats_7d(pacote) if periodo == "7d" else _embed_stats_geral(pacote)
+        embed = (
+            _embed_stats_7d(pacote, periodo)
+            if periodo in ("7d", "1d")
+            else _embed_stats_geral(pacote)
+        )
         arquivo = await _anexar_card(pacote, periodo, embed)
         await interaction.followup.send(embed=embed, file=arquivo)
 

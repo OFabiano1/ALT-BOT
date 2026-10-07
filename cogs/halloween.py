@@ -39,18 +39,18 @@ def dias_faltando(hoje: datetime.date) -> int:
 
 def texto_status(dias: int) -> str:
     if dias == 0:
-        return "feliz halloween! é hoje!"
+        return "🎃💚 feliz halloween! é hoje!"
     if dias == 1:
-        return "é amanhã! falta 1 dia pro halloween"
-    return f"faltam {dias} dias pro halloween"
+        return "🎃 é amanhã! falta 1 dia pro halloween"
+    return f"🎃 faltam {dias} dias pro halloween"
 
 
 def texto_mensagem(dias: int) -> str:
     if dias == 0:
-        return f"{visual.AXOLOTL} É HOJE! feliz halloween, galera!"
+        return f"🎃 {visual.AXOLOTL} É HOJE! feliz halloween, galera! 💚"
     if dias == 1:
-        return f"{visual.AXOLOTL} é amanhã! falta **1 dia** pro halloween... preparem as fantasias."
-    return f"{visual.AXOLOTL} faltam **{dias} dias** pro halloween!"
+        return f"🎃 {visual.AXOLOTL} é amanhã! falta **1 dia** pro halloween... preparem as fantasias. 💚"
+    return f"🎃 {visual.AXOLOTL} faltam **{dias} dias** pro halloween! 💚"
 
 
 class Halloween(commands.Cog, name="Halloween"):
@@ -77,10 +77,12 @@ class Halloween(commands.Cog, name="Halloween"):
             canal = self.bot.get_channel(TEXT_CHANNEL_ID)
             if canal is None:
                 canal = await self.bot.fetch_channel(TEXT_CHANNEL_ID)
+            # dia 31: verde festa. resto do ano: roxo em foco.
+            festa = dias == 0
             embed = discord.Embed(
-                title="countdown pro halloween",
+                title="🎃 É HOJE! feliz halloween 💚" if festa else "🎃 countdown pro halloween 💚",
                 description=texto_mensagem(dias),
-                color=visual.WARNING,
+                color=visual.SUCCESS if festa else visual.PRIMARY,
             )
             embed.set_footer(text=visual.FOOTER)
             await canal.send(embed=embed)
@@ -125,7 +127,7 @@ class Halloween(commands.Cog, name="Halloween"):
     # ─── >halloween ───
     @commands.command(name="halloween")
     async def halloween(self, ctx: commands.Context):
-        """mostra o countdown e atualiza o status da call na hora."""
+        """🎃 mostra o countdown e atualiza o status da call na hora."""
         hoje = datetime.datetime.now(TZ).date()
         dias = dias_faltando(hoje)
         await ctx.send(texto_mensagem(dias))
@@ -136,7 +138,7 @@ class Halloween(commands.Cog, name="Halloween"):
             )
 
     # ─── /halloween ───
-    @app_commands.command(name="halloween", description="countdown pro halloween + atualiza a call.")
+    @app_commands.command(name="halloween", description="🎃 countdown pro halloween + atualiza a call.")
     async def halloween_slash(self, interaction: discord.Interaction):
         """versão slash do >halloween."""
         hoje = datetime.datetime.now(TZ).date()

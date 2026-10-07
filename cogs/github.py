@@ -7,13 +7,16 @@ import asyncio
 import json
 import logging
 import os
+import re
 import urllib.parse
 import urllib.request
 
 import discord
+from discord import app_commands
 from discord.ext import commands, tasks
 
 import data
+import visual
 
 log = logging.getLogger("alt.github")
 
@@ -32,12 +35,15 @@ if TOKEN:
     # com token sobe pra 5000/h e enxerga repo privado.
     HEADERS["Authorization"] = f"Bearer {TOKEN}"
 
-# etag por url: 304 nao conta no rate limit.
+# etag por url: 304 nao conta no rate limit. corpo cacheado:
+# 304 devolve o ultimo corpo em vez de None (None quebra
+# quem chama: repo "some", eventos "somem").
 _etags: dict[str, str] = {}
+_corpos: dict[str, object] = {}
 
 
 def _get(caminho: str, query: dict | None = None):
-    """get com etag. retorna (dados|None se 304, etag|None)."""
+    """get com etag. retorna (dados, etag). 304 reusa o ultimo corpo."""
     qs = f"?{urllib.parse.urlencode(query)}" if query else ""
     url = f"{BASE}{caminho}{qs}"
     headers = dict(HEADERS)
@@ -49,10 +55,14 @@ def _get(caminho: str, query: dict | None = None):
             etag = resp.headers.get("ETag")
             if etag:
                 _etags[url] = etag
-            return json.load(resp), etag
+            dados = json.load(resp)
+            _corpos[url] = dados
+            if len(_corpos) > 50:
+                _corpos.pop(next(iter(_corpos)))
+            return dados, etag
     except urllib.error.HTTPError as e:
-        if e.code == 304:
-            return None, _etags.get(url)
+        if e.code == 304 and url in _corpos:
+            return _corpos[url], _etags.get(url)
         raise
 
 
@@ -153,13 +163,146 @@ def _texto_push(evento: dict, wf: str | None) -> str:
     return "\n".join(linhas)
 
 
+def _limpar_repo(texto: str) -> str | None:
+    """aceita link ou dono/repo. retorna 'dono/repo' ou None se invalido."""
+    t = (texto or "").strip()
+    t = re.sub(r"^https?://github\.com/", "", t, flags=re.IGNORECASE)
+    t = t.strip("/").removesuffix(".git")
+    if re.fullmatch(r"[\w.-]+/[\w.-]+", t):
+        return t
+    return None
+
+
+async def _repo_existe(repo: str) -> bool:
+    """confere na api se o repo existe."""
+    try:
+        dados, _ = await asyncio.to_thread(_get, f"/repos/{repo}")
+        return isinstance(dados, dict)
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return False
+        raise
+    except Exception:
+        log.exception("github: falha ao conferir %s", repo)
+        raise
+
+
 class GitHub(commands.Cog, name="GitHub"):
-    """monitor de pushes: sem comando, so o loop."""
+    """liga repo ao chat + monitor de pushes."""
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         if not CHANNEL_ID:
-            log.warning("GITHUB_CHANNEL_ID nao definido — monitor inativo")
+            log.warning("GITHUB_CHANNEL_ID nao definido — sem fallback de destino")
+
+    # ─── >github ───
+    @commands.command(name="github")
+    @commands.has_permissions(administrator=True)
+    async def github(self, ctx: commands.Context, *, args: str = ""):
+        """[admin] liga repo a este chat: >github <link|dono/repo>."""
+        texto = (args or "").strip()
+        if not texto:
+            await ctx.send(
+                "uso: `>github <link ou dono/repo>` pra avisar push aqui, "
+                "`>github lista` pra ver, `>github remover <repo>` pra tirar."
+            )
+            return
+        if texto.lower() == "lista":
+            vinc = await asyncio.to_thread(data.listar_destinos)
+            if not vinc:
+                await ctx.send("nenhum repo vinculado. usa `>github <repo>` aqui.")
+                return
+            await ctx.send(
+                "\n".join(f"**{r}** → <#{c}>" for r, c in vinc[:20])
+            )
+            return
+        alvo = texto
+        if texto.lower().startswith("remover "):
+            alvo = texto[8:].strip()
+            repo = _limpar_repo(alvo)
+            if repo is None:
+                await ctx.send("repo inválido! manda o link ou `dono/repo`.")
+                return
+            saiu = await asyncio.to_thread(data.desvincular_repo, repo, ctx.channel.id)
+            await ctx.send(
+                f"{repo} fora daqui." if saiu else f"{repo} nem tava vinculado aqui."
+            )
+            return
+        repo = _limpar_repo(texto)
+        if repo is None:
+            await ctx.send("repo inválido! manda o link ou `dono/repo`.")
+            return
+        try:
+            ok = await _repo_existe(repo)
+        except Exception:
+            await ctx.send("api do github fora do ar, tenta de novo em uns segundos.")
+            return
+        if not ok:
+            await ctx.send("repo não encontrado no github. confere o nome.")
+            return
+        await asyncio.to_thread(data.vincular_repo, repo, ctx.channel.id)
+        await ctx.send(f"{visual.AXOLOTL} pushes de **{repo}** caem aqui agora!")
+
+    # ─── /github ───
+    @app_commands.command(name="github", description="[admin] liga repo a este chat pra avisar push.")
+    @app_commands.checks.has_permissions(administrator=True)
+    @app_commands.describe(
+        acao="o que fazer",
+        repo="link ou dono/repo (vincular e remover)",
+    )
+    @app_commands.choices(
+        acao=[
+            app_commands.Choice(name="vincular", value="vincular"),
+            app_commands.Choice(name="lista", value="lista"),
+            app_commands.Choice(name="remover", value="remover"),
+        ]
+    )
+    async def github_slash(
+        self, interaction: discord.Interaction, acao: str, repo: str | None = None
+    ):
+        """versão slash do >github."""
+        if acao == "lista":
+            vinc = await asyncio.to_thread(data.listar_destinos)
+            if not vinc:
+                await interaction.response.send_message(
+                    "nenhum repo vinculado. usa `/github vincular` aqui.", ephemeral=True
+                )
+                return
+            await interaction.response.send_message(
+                "\n".join(f"**{r}** → <#{c}>" for r, c in vinc[:20]), ephemeral=True
+            )
+            return
+        limpo = _limpar_repo(repo or "")
+        if limpo is None:
+            await interaction.response.send_message(
+                "repo inválido! manda o link ou `dono/repo`.", ephemeral=True
+            )
+            return
+        if acao == "remover":
+            ch = interaction.channel.id if interaction.channel else 0
+            saiu = await asyncio.to_thread(data.desvincular_repo, limpo, ch)
+            await interaction.response.send_message(
+                f"{limpo} fora daqui." if saiu else f"{limpo} nem tava vinculado aqui."
+            )
+            return
+        try:
+            ok = await _repo_existe(limpo)
+        except Exception:
+            await interaction.response.send_message(
+                "api do github fora do ar, tenta de novo em uns segundos.",
+                ephemeral=True,
+            )
+            return
+        if not ok:
+            await interaction.response.send_message(
+                "repo não encontrado no github. confere o nome.", ephemeral=True
+            )
+            return
+        ch = interaction.channel.id if interaction.channel else 0
+        await asyncio.to_thread(data.vincular_repo, limpo, ch)
+        await interaction.response.send_message(
+            f"{visual.AXOLOTL} pushes de **{limpo}** caem aqui agora!"
+        )
 
     @commands.Cog.listener()
     async def on_ready(self):
@@ -174,21 +317,24 @@ class GitHub(commands.Cog, name="GitHub"):
 
     @tasks.loop(minutes=INTERVALO_MIN)
     async def vigia(self):
-        if not CHANNEL_ID:
-            return
-        canal = self.bot.get_channel(CHANNEL_ID)
-        if canal is None:
-            try:
-                canal = await self.bot.fetch_channel(CHANNEL_ID)
-            except Exception:
-                log.exception("github: canal %d nao encontrado", CHANNEL_ID)
-                return
         for evento, wf in await _pushes_novos():
-            try:
-                await canal.send(_texto_push(evento, wf))
-                log.info("github: postei push em %s", evento["repo"]["name"])
-            except Exception:
-                log.exception("github: falha ao postar %s", evento["repo"]["name"])
+            repo = evento["repo"]["name"]
+            canais = await asyncio.to_thread(data.destinos_repo, repo)
+            if not canais and CHANNEL_ID:
+                canais = [CHANNEL_ID]
+            for chat_id in canais:
+                canal = self.bot.get_channel(chat_id)
+                if canal is None:
+                    try:
+                        canal = await self.bot.fetch_channel(chat_id)
+                    except Exception:
+                        log.exception("github: canal %d nao encontrado", chat_id)
+                        continue
+                try:
+                    await canal.send(_texto_push(evento, wf))
+                    log.info("github: postei push de %s no chat %d", repo, chat_id)
+                except Exception:
+                    log.exception("github: falha ao postar %s", repo)
 
     @vigia.before_loop
     async def before_vigia(self):

@@ -86,6 +86,12 @@ CREATE TABLE IF NOT EXISTS github_seen_events (
     event_id   TEXT PRIMARY KEY,
     updated_at REAL NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS github_destinos (
+    repo       TEXT NOT NULL,
+    channel_id INTEGER NOT NULL,
+    PRIMARY KEY (repo, channel_id)
+);
 """
 
 
@@ -546,6 +552,47 @@ def salvar_evento(event_id: str) -> None:
             "VALUES (?, ?)",
             (event_id, time.time()),
         )
+
+
+# ─── destinos do github (repo -> chats) ───
+def vincular_repo(repo: str, channel_id: int) -> None:
+    """liga um repo ao chat. idempotente."""
+    with _lock, _conectar() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute(
+            "INSERT OR IGNORE INTO github_destinos (repo, channel_id) "
+            "VALUES (?, ?)",
+            (repo, channel_id),
+        )
+
+
+def desvincular_repo(repo: str, channel_id: int) -> bool:
+    """tira o repo do chat. True se existia."""
+    with _lock, _conectar() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        cur = conn.execute(
+            "DELETE FROM github_destinos WHERE repo = ? AND channel_id = ?",
+            (repo, channel_id),
+        )
+        return cur.rowcount > 0
+
+
+def destinos_repo(repo: str) -> list[int]:
+    """chats vinculados ao repo."""
+    with _lock, _conectar() as conn:
+        rows = conn.execute(
+            "SELECT channel_id FROM github_destinos WHERE repo = ?", (repo,)
+        ).fetchall()
+    return [r["channel_id"] for r in rows]
+
+
+def listar_destinos() -> list[tuple[str, int]]:
+    """todos os vinculos [(repo, channel_id)]."""
+    with _lock, _conectar() as conn:
+        rows = conn.execute(
+            "SELECT repo, channel_id FROM github_destinos ORDER BY repo"
+        ).fetchall()
+    return [(r["repo"], r["channel_id"]) for r in rows]
 
 
 # ─── migração ───

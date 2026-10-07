@@ -177,6 +177,11 @@ ORDEM_AJUDA = (
     "Status",
 )
 
+# cogs que aparecem dentro de outra secao da ajuda.
+FUSAO_CATEGORIAS = {
+    "GitHub": "Servidor",
+}
+
 # banner da ajuda. padrao embutido, mas link de cdn expira:
 # quando cair, bota o link novo no env que ele prevalece.
 AJUDA_BANNER_URL = os.getenv(
@@ -206,6 +211,7 @@ def _grupos_comandos() -> dict[str, list[tuple[str, str | None]]]:
         if cmd.name in ("ajuda", "help") or cmd.hidden:
             continue
         chave = cmd.cog.qualified_name if cmd.cog else "Geral"
+        chave = FUSAO_CATEGORIAS.get(chave, chave)
         grupos.setdefault(chave, []).append((cmd.name, cmd.short_doc))
     return grupos
 
@@ -220,7 +226,7 @@ def _categoria_slash() -> dict[str, str]:
     mapa: dict[str, str] = {}
     for cog in bot.cogs.values():
         for cmd in cog.get_app_commands():
-            mapa[cmd.name] = cog.qualified_name
+            mapa[cmd.name] = FUSAO_CATEGORIAS.get(cog.qualified_name, cog.qualified_name)
     for nome in _slash_por_nome():
         mapa.setdefault(nome, "Geral")
     return mapa

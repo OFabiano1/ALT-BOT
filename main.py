@@ -28,6 +28,10 @@ COGS = (
     "cogs.halloween",
     "cogs.deadlock",
     "cogs.voz",
+    "cogs.server",
+    "cogs.github",
+    "cogs.quests",
+    "cogs.perfil",
 )
 
 # so liga o minimo: sem `guild_messages` o `>` nem chega,
@@ -164,8 +168,11 @@ async def slash_ping(interaction: discord.Interaction):
 ORDEM_AJUDA = (
     "Geral",
     "Voz",
+    "Perfil",
     "Deadlock",
     "Níveis",
+    "Quests",
+    "Servidor",
     "jogos",
     "Economia",
     "tickets",
@@ -185,8 +192,11 @@ AJUDA_BANNER_URL = os.getenv(
 CATEGORIA_EMOJIS = {
     "Geral": "✨",
     "Voz": "🔊",
+    "Perfil": "👤",
     "Deadlock": "🎮",
     "Níveis": "⭐",
+    "Quests": "📜",
+    "Servidor": "🖥️",
     "Jogos": "🎲",
     "Economia": "💎",
     "Tickets": "🎟️",

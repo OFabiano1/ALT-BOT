@@ -2,6 +2,7 @@
 # sqlite em modo wal, cada operacao e uma transacao atomica.
 # caminho absoluto pra nao depender de onde o app foi aberto.
 
+import datetime
 import json
 import sqlite3
 import threading
@@ -14,7 +15,8 @@ LEGACY_XP = Path(__file__).parent / "data" / "xp.json"
 # serializa acesso dentro do processo. BEGIN IMMEDIATE (abaixo) cuida da
 # atomicidade da transação; este lock evita contenção entre tarefas do
 # mesmo event loop.
-_lock = threading.Lock()
+# RLock porque quest_evento chama buscar_xp/ganhar_xp com o lock preso.
+_lock = threading.RLock()
 
 # coluna de placar para cada resultado. Mapeamento explícito em vez de
 # derivar a chave do primeiro caractere da string.
@@ -70,6 +72,34 @@ CREATE TABLE IF NOT EXISTS voz_fixa (
 CREATE TABLE IF NOT EXISTS deadlock_links (
     discord_id INTEGER PRIMARY KEY,
     steam_id   INTEGER NOT NULL,
+    updated_at REAL NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS quest_progress (
+    user_id   INTEGER NOT NULL,
+    periodo   TEXT NOT NULL,
+    quest_id  TEXT NOT NULL,
+    progresso INTEGER NOT NULL DEFAULT 0,
+    concluida INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, periodo, quest_id)
+);
+
+CREATE TABLE IF NOT EXISTS voice_time (
+    user_id INTEGER NOT NULL,
+    dia     TEXT NOT NULL,
+    minutos INTEGER NOT NULL DEFAULT 0,
+    pago    INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, dia)
+);
+
+CREATE TABLE IF NOT EXISTS github_seen (
+    repo       TEXT PRIMARY KEY,
+    sha        TEXT NOT NULL,
+    updated_at REAL NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS github_seen_events (
+    event_id   TEXT PRIMARY KEY,
     updated_at REAL NOT NULL
 );
 """
@@ -477,6 +507,165 @@ def buscar_deadlock(discord_id: int) -> int | None:
             (discord_id,),
         ).fetchone()
     return int(row["steam_id"]) if row else None
+
+
+# ─── períodos (quests) ───
+
+# utc-3 fixo, mesmo do halloween. dia e semana iso no horario da comunidade.
+_TZ = datetime.timezone(datetime.timedelta(hours=-3))
+
+
+def hoje_key() -> str:
+    """YYYY-MM-DD de hoje. chave das quests diarias."""
+    return datetime.datetime.now(_TZ).date().isoformat()
+
+
+def semana_key() -> str:
+    """YYYY-Www da semana iso. chave das quests semanais."""
+    hoje = datetime.datetime.now(_TZ).date()
+    ano, sem, _ = hoje.isocalendar()
+    return f"{ano}-W{sem:02d}"
+
+
+# ─── quests ───
+def quest_evento(
+    user_id: int, quest_id: str, periodo: str, ganho: int, meta: int, recompensa: int
+) -> tuple[int, bool, int, int, bool]:
+    """soma progresso e, se bater a meta, paga o xp na hora.
+
+    Retorna (progresso, concluiu_agora, xp, nivel, subiu).
+    Idempotente: depois de concluida, so acumula numero, nao paga de novo.
+    """
+    with _lock, _conectar() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute(
+            "INSERT INTO quest_progress (user_id, periodo, quest_id, progresso) "
+            "VALUES (?, ?, ?, ?) ON CONFLICT(user_id, periodo, quest_id) DO NOTHING",
+            (user_id, periodo, quest_id, 0),
+        )
+        row = conn.execute(
+            "SELECT progresso, concluida FROM quest_progress "
+            "WHERE user_id = ? AND periodo = ? AND quest_id = ?",
+            (user_id, periodo, quest_id),
+        ).fetchone()
+        progresso = row["progresso"] + ganho
+        concluiu_agora = False
+        xp, nivel = buscar_xp(user_id)
+        subiu = False
+        if not row["concluida"] and progresso >= meta:
+            conn.execute(
+                "UPDATE quest_progress SET progresso = ?, concluida = 1 "
+                "WHERE user_id = ? AND periodo = ? AND quest_id = ?",
+                (progresso, user_id, periodo, quest_id),
+            )
+            concluiu_agora = True
+        else:
+            conn.execute(
+                "UPDATE quest_progress SET progresso = ? "
+                "WHERE user_id = ? AND periodo = ? AND quest_id = ?",
+                (progresso, user_id, periodo, quest_id),
+            )
+    if concluiu_agora:
+        xp, nivel, subiu = ganhar_xp(user_id, recompensa)
+    return progresso, concluiu_agora, xp, nivel, subiu
+
+
+def estado_quests(user_id: int, periodo: str) -> dict[str, tuple[int, bool]]:
+    """{quest_id: (progresso, concluida)} no periodo."""
+    with _lock, _conectar() as conn:
+        rows = conn.execute(
+            "SELECT quest_id, progresso, concluida FROM quest_progress "
+            "WHERE user_id = ? AND periodo = ?",
+            (user_id, periodo),
+        ).fetchall()
+    return {r["quest_id"]: (r["progresso"], bool(r["concluida"])) for r in rows}
+
+
+# ─── tempo de call (xp por voz) ───
+def somar_voz(user_id: int, dia: str, minutos: int) -> tuple[int, int]:
+    """soma minutos de call no dia. retorna (minutos, pago)."""
+    with _lock, _conectar() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute(
+            "INSERT INTO voice_time (user_id, dia, minutos) VALUES (?, ?, ?) "
+            "ON CONFLICT(user_id, dia) DO NOTHING",
+            (user_id, dia, 0),
+        )
+        conn.execute(
+            "UPDATE voice_time SET minutos = minutos + ? WHERE user_id = ? AND dia = ?",
+            (minutos, user_id, dia),
+        )
+        row = conn.execute(
+            "SELECT minutos, pago FROM voice_time WHERE user_id = ? AND dia = ?",
+            (user_id, dia),
+        ).fetchone()
+        return row["minutos"], row["pago"]
+
+
+def pagar_voz(user_id: int, dia: str, pago_min: int) -> None:
+    """marca ate que minuto o xp de voz ja foi pago no dia."""
+    with _lock, _conectar() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute(
+            "UPDATE voice_time SET pago = ? WHERE user_id = ? AND dia = ?",
+            (pago_min, user_id, dia),
+        )
+
+
+def buscar_voz(user_id: int, dia: str) -> tuple[int, int]:
+    """retorna (minutos, pago) de call no dia."""
+    with _lock, _conectar() as conn:
+        row = conn.execute(
+            "SELECT minutos, pago FROM voice_time WHERE user_id = ? AND dia = ?",
+            (user_id, dia),
+        ).fetchone()
+    return (row["minutos"], row["pago"]) if row else (0, 0)
+
+
+# ─── github monitorado ───
+def buscar_github(repo: str) -> str | None:
+    """ultimo sha postado do repo, ou None (primeira vez)."""
+    with _lock, _conectar() as conn:
+        row = conn.execute(
+            "SELECT sha FROM github_seen WHERE repo = ?", (repo,)
+        ).fetchone()
+    return row["sha"] if row else None
+
+
+def salvar_github(repo: str, sha: str) -> None:
+    """marca o sha como ja postado."""
+    import time
+
+    with _lock, _conectar() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute(
+            "INSERT INTO github_seen (repo, sha, updated_at) VALUES (?, ?, ?) "
+            "ON CONFLICT(repo) DO UPDATE SET sha = excluded.sha, "
+            "updated_at = excluded.updated_at",
+            (repo, sha, time.time()),
+        )
+
+
+def viu_evento(event_id: str) -> bool:
+    """True se o evento do github ja foi postado."""
+    with _lock, _conectar() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM github_seen_events WHERE event_id = ?", (event_id,)
+        ).fetchone()
+    return row is not None
+
+
+def salvar_evento(event_id: str) -> None:
+    """marca o evento como ja postado."""
+    import time
+
+    with _lock, _conectar() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute(
+            "INSERT OR IGNORE INTO github_seen_events (event_id, updated_at) "
+            "VALUES (?, ?)",
+            (event_id, time.time()),
+        )
 
 
 # ─── migração ───

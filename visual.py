@@ -99,4 +99,7 @@ CATEGORIAS = {
     "Mudae":     "Mudae",
     "Halloween": "Halloween",
     "Deadlock":  "Deadlock",
+    "Servidor":  "Servidor",
+    "Quests":    "Quests",
+    "Perfil":    "Perfil",
 }

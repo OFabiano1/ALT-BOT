@@ -8,8 +8,8 @@ o bot oficial da **axolotl br** — sua comunidade na internet. de player pra pl
 |---|---|
 | geral | `>axolotl` `>ping` `/ping` `>ajuda` |
 | voz | `>call` `>sair` `>oi` |
-| servidor | `>server` (hub) + aviso auto de push no chat |
-| níveis | `>xp` (`>rank`) `>ranking` (`>top`) `>quests` `>perfil` |
+| servidor | `>server` (hub) `>perfil` + aviso auto de push no chat |
+| níveis | `>xp` (`>rank`) `>ranking` (`>top`) |
 | jogos | `>ptp` `/ptp` `>placar` `>rankingptp` |
 | economia | `>saldo` `>daily` `>pay` `>loja` `>buy` `>roll` `>colecao` `>topdima` |
 | mudae | auto-reminder `$m`/`$wa`/`$ha`... + `>mudae <min>` `>mudae_stop` |

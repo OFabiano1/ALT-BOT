@@ -134,18 +134,6 @@ class Jogos(commands.Cog, name="jogos"):
             await asyncio.to_thread(
                 data.adicionar_diamantes, ctx.author.id, recompensa
             )
-        if dados["resultado"] == "vitoria":
-            _, agora, _, _, _ = await asyncio.to_thread(
-                data.quest_evento,
-                ctx.author.id,
-                "ptp1",
-                data.hoje_key(),
-                1,
-                1,
-                10,
-            )
-            if agora:
-                await ctx.send(f"{visual.AXOLOTL} quest completa: **vence 1 ptp** +10xp!")
         await ctx.send(embed=self._montar_embed(dados, placar, recompensa))
 
     # ─── /ptp (slash) ───
@@ -173,23 +161,7 @@ class Jogos(commands.Cog, name="jogos"):
             await asyncio.to_thread(
                 data.adicionar_diamantes, interaction.user.id, recompensa
             )
-        if dados["resultado"] == "vitoria":
-            _, agora, _, _, _ = await asyncio.to_thread(
-                data.quest_evento,
-                interaction.user.id,
-                "ptp1",
-                data.hoje_key(),
-                1,
-                1,
-                10,
-            )
-        else:
-            agora = False
         await interaction.response.send_message(embed=self._montar_embed(dados, placar, recompensa))
-        if agora:
-            await interaction.followup.send(
-                f"{visual.AXOLOTL} quest completa: **vence 1 ptp** +10xp!"
-            )
 
     # ─── >placar ───
     @commands.command(name="placar")

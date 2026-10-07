@@ -30,8 +30,6 @@ COGS = (
     "cogs.voz",
     "cogs.server",
     "cogs.github",
-    "cogs.quests",
-    "cogs.perfil",
 )
 
 # so liga o minimo: sem `guild_messages` o `>` nem chega,
@@ -118,7 +116,7 @@ async def on_tree_error(
 # hello world
 @bot.command()
 async def axolotl(ctx):
-    await ctx.send(f"{visual.AXOLOTL} Axolotl!")
+    await ctx.send(f"{visual.AXOLOTL} hello world!")
 
 
 @bot.tree.command(name="axolotl", description="a assinatura do axolote.")
@@ -168,10 +166,8 @@ async def slash_ping(interaction: discord.Interaction):
 ORDEM_AJUDA = (
     "Geral",
     "Voz",
-    "Perfil",
     "Deadlock",
     "Níveis",
-    "Quests",
     "Servidor",
     "jogos",
     "Economia",
@@ -192,10 +188,8 @@ AJUDA_BANNER_URL = os.getenv(
 CATEGORIA_EMOJIS = {
     "Geral": "✨",
     "Voz": "🔊",
-    "Perfil": "👤",
     "Deadlock": "🎮",
     "Níveis": "⭐",
-    "Quests": "📜",
     "Servidor": "🖥️",
     "Jogos": "🎲",
     "Economia": "💎",

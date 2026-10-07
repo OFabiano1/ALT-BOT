@@ -100,4 +100,5 @@ CATEGORIAS = {
     "Halloween": "Halloween",
     "Deadlock":  "Deadlock",
     "Servidor":  "Servidor",
+    "Diárias":   "Diárias",
 }

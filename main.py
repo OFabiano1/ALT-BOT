@@ -30,6 +30,7 @@ COGS = (
     "cogs.voz",
     "cogs.server",
     "cogs.github",
+    "cogs.daily",
 )
 
 # so liga o minimo: sem `guild_messages` o `>` nem chega,
@@ -168,6 +169,7 @@ ORDEM_AJUDA = (
     "Voz",
     "Deadlock",
     "Níveis",
+    "Diárias",
     "Servidor",
     "jogos",
     "Economia",
@@ -195,6 +197,7 @@ CATEGORIA_EMOJIS = {
     "Voz": "🔊",
     "Deadlock": "🎮",
     "Níveis": "⭐",
+    "Diárias": "📅",
     "Servidor": "🖥️",
     "Jogos": "🎲",
     "Economia": "💎",

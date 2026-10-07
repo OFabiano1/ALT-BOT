@@ -92,6 +92,33 @@ CREATE TABLE IF NOT EXISTS github_destinos (
     channel_id INTEGER NOT NULL,
     PRIMARY KEY (repo, channel_id)
 );
+
+CREATE TABLE IF NOT EXISTS diaria_feita (
+    user_id  INTEGER NOT NULL,
+    dia      TEXT NOT NULL,
+    quest_id TEXT NOT NULL,
+    PRIMARY KEY (user_id, dia, quest_id)
+);
+
+CREATE TABLE IF NOT EXISTS streak (
+    user_id    INTEGER PRIMARY KEY,
+    dias       INTEGER NOT NULL DEFAULT 0,
+    ultimo_dia TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS digest_msg (
+    dia        TEXT PRIMARY KEY,
+    channel_id INTEGER NOT NULL,
+    message_id INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS contadores (
+    user_id INTEGER NOT NULL,
+    dia     TEXT NOT NULL,
+    chave   TEXT NOT NULL,
+    valor   INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, dia, chave)
+);
 """
 
 
@@ -552,6 +579,125 @@ def salvar_evento(event_id: str) -> None:
             "VALUES (?, ?)",
             (event_id, time.time()),
         )
+
+
+# ─── diarias e streak ───
+def marcar_feita(user_id: int, dia: str, quest_id: str) -> bool:
+    """marca quest do dia. True se foi a primeira vez (vale xp)."""
+    with _lock, _conectar() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO diaria_feita (user_id, dia, quest_id) "
+            "VALUES (?, ?, ?)",
+            (user_id, dia, quest_id),
+        )
+        return cur.rowcount > 0
+
+
+def feitas_no_dia(user_id: int, dia: str) -> list[str]:
+    """quest_ids feitas no dia."""
+    with _lock, _conectar() as conn:
+        rows = conn.execute(
+            "SELECT quest_id FROM diaria_feita WHERE user_id = ? AND dia = ?",
+            (user_id, dia),
+        ).fetchall()
+    return [r["quest_id"] for r in rows]
+
+
+def quem_jogou(dia: str) -> list[int]:
+    """quem fez ao menos 1 quest no dia."""
+    with _lock, _conectar() as conn:
+        rows = conn.execute(
+            "SELECT DISTINCT user_id FROM diaria_feita WHERE dia = ?", (dia,)
+        ).fetchall()
+    return [r["user_id"] for r in rows]
+
+
+def buscar_streak(user_id: int) -> tuple[int, str]:
+    """retorna (dias, ultimo_dia)."""
+    with _lock, _conectar() as conn:
+        row = conn.execute(
+            "SELECT dias, ultimo_dia FROM streak WHERE user_id = ?", (user_id,)
+        ).fetchone()
+    return (row["dias"], row["ultimo_dia"]) if row else (0, "")
+
+
+def salvar_streak(user_id: int, dias: int, ultimo_dia: str) -> None:
+    with _lock, _conectar() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute(
+            "INSERT INTO streak (user_id, dias, ultimo_dia) VALUES (?, ?, ?) "
+            "ON CONFLICT(user_id) DO UPDATE SET dias = excluded.dias, "
+            "ultimo_dia = excluded.ultimo_dia",
+            (user_id, dias, ultimo_dia),
+        )
+
+
+def streak_ativos() -> list[tuple[int, int, str]]:
+    """quem tem streak > 0: [(user_id, dias, ultimo_dia)]."""
+    with _lock, _conectar() as conn:
+        rows = conn.execute(
+            "SELECT user_id, dias, ultimo_dia FROM streak WHERE dias > 0"
+        ).fetchall()
+    return [(r["user_id"], r["dias"], r["ultimo_dia"]) for r in rows]
+
+
+def buscar_discord_por_steam(steam_id: int) -> int | None:
+    """discord dono da steam vinculada, ou None."""
+    with _lock, _conectar() as conn:
+        row = conn.execute(
+            "SELECT discord_id FROM deadlock_links WHERE steam_id = ?", (steam_id,)
+        ).fetchone()
+    return int(row["discord_id"]) if row else None
+
+
+def listar_deadlocks() -> list[tuple[int, int]]:
+    """todos os vinculos [(discord_id, steam_id)]."""
+    with _lock, _conectar() as conn:
+        rows = conn.execute("SELECT discord_id, steam_id FROM deadlock_links").fetchall()
+    return [(r["discord_id"], r["steam_id"]) for r in rows]
+
+
+def salvar_digest(dia: str, channel_id: int, message_id: int) -> None:
+    with _lock, _conectar() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute(
+            "INSERT INTO digest_msg (dia, channel_id, message_id) VALUES (?, ?, ?) "
+            "ON CONFLICT(dia) DO UPDATE SET channel_id = excluded.channel_id, "
+            "message_id = excluded.message_id",
+            (dia, channel_id, message_id),
+        )
+
+
+def buscar_digest(dia: str) -> tuple[int, int] | None:
+    """(channel_id, message_id) do digest do dia, ou None."""
+    with _lock, _conectar() as conn:
+        row = conn.execute(
+            "SELECT channel_id, message_id FROM digest_msg WHERE dia = ?", (dia,)
+        ).fetchone()
+    return (row["channel_id"], row["message_id"]) if row else None
+
+
+# ─── contadores (ex: msgs do dia pra quest) ───
+def somar_contador(user_id: int, dia: str, chave: str, ganho: int = 1) -> int:
+    """soma e retorna o total."""
+    with _lock, _conectar() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute(
+            "INSERT INTO contadores (user_id, dia, chave, valor) VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(user_id, dia, chave) DO NOTHING",
+            (user_id, dia, chave, 0),
+        )
+        conn.execute(
+            "UPDATE contadores SET valor = valor + ? "
+            "WHERE user_id = ? AND dia = ? AND chave = ?",
+            (ganho, user_id, dia, chave),
+        )
+        row = conn.execute(
+            "SELECT valor FROM contadores WHERE user_id = ? AND dia = ? AND chave = ?",
+            (user_id, dia, chave),
+        ).fetchone()
+        return row["valor"]
 
 
 # ─── destinos do github (repo -> chats) ───

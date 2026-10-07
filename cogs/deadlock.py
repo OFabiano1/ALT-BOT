@@ -16,6 +16,7 @@ import data
 import deadlock_api
 import deadlock_card
 import visual
+from cogs import daily
 
 log = logging.getLogger("alt.deadlock")
 
@@ -127,11 +128,13 @@ def _carregar_stats(account_id: int, periodo: str) -> dict:
         f_heroes = ex.submit(deadlock_api.buscar_hero_assets)
         f_ranks = ex.submit(deadlock_api.buscar_rank_assets)
         if periodo in ("7d", "1d"):
+            historico = ex.submit(deadlock_api.buscar_match_history, account_id).result()
             resumo = deadlock_api.resumo_7d(
-                ex.submit(deadlock_api.buscar_match_history, account_id).result(),
+                historico,
                 dias=1 if periodo == "1d" else 7,
             )
         else:
+            historico = []
             resumo = deadlock_api.resumo_geral(
                 ex.submit(deadlock_api.buscar_hero_stats, account_id).result()
             )
@@ -155,6 +158,7 @@ def _carregar_stats(account_id: int, periodo: str) -> dict:
         "tier": tier,
         "rank_img": (rank_assets.get(tier) or {}).get("imagem"),
         "resumo": resumo,
+        "historico": historico,
         "heroes": {hid: v["nome"] for hid, v in hero_assets.items()},
         "hero_assets": hero_assets,
         "retratos": {hid: v["retrato"] for hid, v in hero_assets.items()},
@@ -401,6 +405,11 @@ class Deadlock(commands.Cog, name="Deadlock"):
         except deadlock_api.DeadlockAPIError as e:
             await ctx.send(f"deu ruim buscando na api: `{e}`. tenta de novo em uns segundos.")
             return
+        # quest oportunista: historico ja veio, sem chamada extra.
+        if pacote.get("historico"):
+            dono = await asyncio.to_thread(data.buscar_discord_por_steam, account_id)
+            if dono is not None:
+                await daily.avaliar_deadlock(dono, account_id, pacote["historico"])
         embed = (
             _embed_stats_7d(pacote, periodo)
             if periodo in ("7d", "1d")
@@ -452,6 +461,11 @@ class Deadlock(commands.Cog, name="Deadlock"):
                 f"deu ruim buscando na api: `{e}`. tenta de novo em uns segundos."
             )
             return
+        # quest oportunista: historico ja veio, sem chamada extra.
+        if pacote.get("historico"):
+            dono = await asyncio.to_thread(data.buscar_discord_por_steam, account_id)
+            if dono is not None:
+                await daily.avaliar_deadlock(dono, account_id, pacote["historico"])
         embed = (
             _embed_stats_7d(pacote, periodo)
             if periodo in ("7d", "1d")

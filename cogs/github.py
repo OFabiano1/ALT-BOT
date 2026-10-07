@@ -85,11 +85,23 @@ async def _pushes_novos() -> list[tuple[dict, str | None]]:
             algum_visto = True
             break
     if not algum_visto:
-        # primeira vez: marca tudo sem postar pra nao cuspir historico.
+        # primeira vez: posta so o mais recente, marca o resto sem postar.
+        # (se postasse tudo, cuspia historico; se nada, o ultimo commit sumia.)
         for e in pushes:
             await asyncio.to_thread(data.salvar_evento, e["id"])
         log.info("github: monitorando pushes de %s", USER)
-        return []
+        novo = pushes[0]
+        repo = novo["repo"]["name"]
+        try:
+            runs, _ = await asyncio.to_thread(
+                _get, f"/repos/{repo}/actions/runs", {"per_page": 1}
+            )
+            lista = runs.get("workflow_runs") if isinstance(runs, dict) else runs
+            wf = _linha_workflow(lista)
+        except Exception:
+            log.exception("github: falha ao buscar workflow de %s", repo)
+            wf = None
+        return [(novo, wf)]
     novos = []
     for e in reversed(pushes):
         if await asyncio.to_thread(data.viu_evento, e["id"]):
@@ -153,7 +165,12 @@ class GitHub(commands.Cog, name="GitHub"):
     async def on_ready(self):
         if not self.vigia.is_running():
             self.vigia.start()
-            log.info("github: vigia de pushes de %s a cada %dmin", USER, INTERVALO_MIN)
+            log.info(
+                "github: vigia de pushes de %s a cada %dmin -> chat %d",
+                USER,
+                INTERVALO_MIN,
+                CHANNEL_ID,
+            )
 
     @tasks.loop(minutes=INTERVALO_MIN)
     async def vigia(self):

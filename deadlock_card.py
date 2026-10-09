@@ -447,3 +447,90 @@ def render(pacote: dict, periodo: str) -> bytes:
         raise
     except Exception as e:
         raise DeadlockCardError(f"render quebrou: {e}") from e
+
+
+# ─── rank ───
+
+
+def _url_rank_sub(tier: int, sub: int) -> str | None:
+    if tier <= 0:
+        return None
+    base = (deadlock_api.BASE or "").rstrip("/")
+    if not base:
+        return None
+    return f"{base}/v1/assets/ranks/{tier}/{max(1, sub)}/image"
+
+
+def render_rank(pacote: dict, info: dict) -> bytes:
+    """card do rank: badge oficial, tier romano e progresso pro proximo."""
+    try:
+        pegar = _fontes()
+        tier = int(info.get("tier", 0) or 0)
+        sub = int(info.get("sub", 0) or 0)
+        badge = _retrato(_url_rank_sub(tier, sub), f"rank_{tier}_{sub}.png", 240)
+        altura = 480
+        img, desenho = _base(altura)
+        y = MARGEM
+        if badge is not None:
+            img.paste(badge, (MARGEM, y), badge)
+        else:
+            desenho.rounded_rectangle([MARGEM, y, MARGEM + 200, y + 240], 24, fill=BORDA)
+            desenho.text(
+                (MARGEM + 78, y + 82), "?", font=pegar("display", 72), fill=TEXTO_APAGADO
+            )
+        x_txt = MARGEM + 280
+        desenho.text(
+            (x_txt, y + 8),
+            _seguro(pacote.get("persona", "steam")),
+            font=pegar("display", 48),
+            fill=TEXTO,
+        )
+        desenho.text(
+            (x_txt, y + 78),
+            _seguro(info.get("rank_txt", "obscurus")).upper(),
+            font=pegar("display", 60),
+            fill=VIOLETA_CLARO,
+        )
+        y += 280
+        fonte_linha = pegar("texto", 28)
+        if info.get("obscurus"):
+            desenho.text(
+                (MARGEM, y),
+                "em placement: jogue ranqueadas pra ganhar rank!",
+                font=fonte_linha,
+                fill=TEXTO,
+            )
+        elif info.get("topo"):
+            _barra(desenho, MARGEM, y, LARGURA - MARGEM * 2, 26, 1.0)
+            desenho.text(
+                (MARGEM, y + 44),
+                "topo do eternus. sem proximo, so lenda.",
+                font=fonte_linha,
+                fill=TEXTO,
+            )
+        else:
+            _barra(
+                desenho, MARGEM, y, LARGURA - MARGEM * 2, 26, info.get("atual", 0) / 1000.0
+            )
+            y += 44
+            desenho.text(
+                (MARGEM, y),
+                f"{info.get('atual', 0)} / 1000 pontos",
+                font=fonte_linha,
+                fill=TEXTO_APAGADO,
+            )
+            y += 44
+            desenho.text(
+                (MARGEM, y),
+                f"faltam {info.get('falta', 0)} pontos pro próximo: {info.get('proximo_txt', '')}",
+                font=pegar("texto_bold", 30),
+                fill=TEXTO,
+            )
+        _rodape(desenho, altura, pegar)
+        saida = BytesIO()
+        img.save(saida, format="PNG")
+        return saida.getvalue()
+    except DeadlockCardError:
+        raise
+    except Exception as e:
+        raise DeadlockCardError(f"render rank quebrou: {e}") from e

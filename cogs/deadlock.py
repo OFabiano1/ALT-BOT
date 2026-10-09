@@ -230,6 +230,44 @@ def _embed_stats_7d(pacote: dict, periodo: str = "7d") -> discord.Embed:
     return embed
 
 
+async def _anexar_card_rank(
+    pacote: dict, info: dict, embed: discord.Embed
+) -> discord.File | None:
+    # tenta o card do rank; se falhar ou demorar, o texto segue sozinho.
+    try:
+        png = await asyncio.wait_for(
+            asyncio.to_thread(deadlock_card.render_rank, pacote, info), timeout=20
+        )
+        arquivo = discord.File(io.BytesIO(png), filename="deadlock_rank.png")
+        embed.set_image(url="attachment://deadlock_rank.png")
+        return arquivo
+    except asyncio.TimeoutError:
+        log.warning("deadlock: card de rank demorou, vai so texto")
+        return None
+    except Exception:
+        log.exception("deadlock: card de rank falhou, vai so texto")
+        return None
+
+
+def _embed_rank(pacote: dict, info: dict) -> discord.Embed:
+    if info.get("obscurus"):
+        desc = "em placement: jogue ranqueadas pra ganhar rank!"
+    elif info.get("topo"):
+        desc = "topo do eternus. sem próximo, só lenda."
+    else:
+        desc = (
+            f"`{info.get('atual', 0)} / 1000` pontos\n"
+            f"faltam **{info.get('falta', 0)}** pontos pro próximo: **{info.get('proximo_txt', '')}**"
+        )
+    embed = discord.Embed(
+        title=f"{pacote['rank_emoji']}{pacote['persona']} · {info.get('rank_txt', 'obscurus')}",
+        description=desc,
+        color=visual.PRIMARY,
+    )
+    embed.set_footer(text=visual.FOOTER)
+    return embed
+
+
 async def _resolver_steam_do_stats(
     guild: discord.Guild | None,
     autor_id: int,
@@ -472,6 +510,83 @@ class Deadlock(commands.Cog, name="Deadlock"):
             else _embed_stats_geral(pacote)
         )
         arquivo = await _anexar_card(pacote, periodo, embed)
+        await interaction.followup.send(embed=embed, file=arquivo)
+
+    # ─── >rank ───
+    @commands.command(name="rank")
+    async def rank(self, ctx: commands.Context, *, args: str = ""):
+        """rank do deadlock com progresso pro próximo."""
+        alvo_txt, _periodo = _separar_args_stats(args)
+        account_id, aviso = await _resolver_steam_do_stats(
+            ctx.guild, ctx.author.id, None, None, alvo_txt
+        )
+        if account_id is None:
+            if aviso == "vínculo":
+                await ctx.send(embed=_embed_vinculo(), view=VincularView())
+            else:
+                await ctx.send(aviso or "deu ruim ao resolver a conta.")
+            return
+        try:
+            rank, ranks, perfil = await asyncio.gather(
+                asyncio.to_thread(deadlock_api.buscar_rank, account_id),
+                asyncio.to_thread(deadlock_api.buscar_ranks),
+                asyncio.to_thread(deadlock_api.buscar_steam_profile, account_id),
+            )
+        except deadlock_api.DeadlockAPIError as e:
+            await ctx.send(f"deu ruim buscando na api: `{e}`. tenta de novo em uns segundos.")
+            return
+        pacote = {
+            "persona": perfil.get("personaname") or f"steam {account_id}",
+            "rank_emoji": visual.deadlock_rank_emoji(ranks.get(int(rank.get("rank", 0) or 0), "")),
+        }
+        info = deadlock_api.info_rank(rank, ranks)
+        embed = _embed_rank(pacote, info)
+        arquivo = await _anexar_card_rank(pacote, info, embed)
+        await ctx.send(embed=embed, file=arquivo)
+
+    # ─── /rank ───
+    @app_commands.command(name="rank", description="rank do deadlock com progresso pro próximo.")
+    @app_commands.describe(
+        membro="ver o rank de outro membro (precisa de vínculo)",
+        steam="id, link ou nome da steam (consulta avulsa, sem salvar)",
+    )
+    async def rank_slash(
+        self,
+        interaction: discord.Interaction,
+        membro: discord.Member | None = None,
+        steam: str | None = None,
+    ):
+        """versão slash do >rank."""
+        await interaction.response.defer()
+        account_id, aviso = await _resolver_steam_do_stats(
+            interaction.guild, interaction.user.id, membro, steam, None
+        )
+        if account_id is None:
+            if aviso == "vínculo":
+                await interaction.followup.send(
+                    embed=_embed_vinculo(), view=VincularView()
+                )
+            else:
+                await interaction.followup.send(aviso or "deu ruim ao resolver a conta.")
+            return
+        try:
+            rank, ranks, perfil = await asyncio.gather(
+                asyncio.to_thread(deadlock_api.buscar_rank, account_id),
+                asyncio.to_thread(deadlock_api.buscar_ranks),
+                asyncio.to_thread(deadlock_api.buscar_steam_profile, account_id),
+            )
+        except deadlock_api.DeadlockAPIError as e:
+            await interaction.followup.send(
+                f"deu ruim buscando na api: `{e}`. tenta de novo em uns segundos."
+            )
+            return
+        pacote = {
+            "persona": perfil.get("personaname") or f"steam {account_id}",
+            "rank_emoji": visual.deadlock_rank_emoji(ranks.get(int(rank.get("rank", 0) or 0), "")),
+        }
+        info = deadlock_api.info_rank(rank, ranks)
+        embed = _embed_rank(pacote, info)
+        arquivo = await _anexar_card_rank(pacote, info, embed)
         await interaction.followup.send(embed=embed, file=arquivo)
 
 

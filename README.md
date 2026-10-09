@@ -9,12 +9,12 @@ o bot oficial da **axolotl br** — sua comunidade na internet. de player pra pl
 | geral | `>axolotl` `>ping` `/ping` `>ajuda` |
 | voz | `>call` `>sair` `>oi` |
 | servidor | `>server` (hub) `>perfil` + aviso auto de push no chat |
-| níveis | `>xp` (`>rank`) `>ranking` (`>top`) |
+| níveis | `>xp` `>ranking` (`>top`) |
 | jogos | `>ptp` `/ptp` `>placar` `>rankingptp` |
 | economia | `>saldo` `>daily` `>pay` `>loja` `>buy` `>roll` `>colecao` `>topdima` |
 | mudae | auto-reminder `$m`/`$wa`/`$ha`... + `>mudae <min>` `>mudae_stop` |
 | tickets | `>setupticket` `>fecharticket` `>addticket` |
-| extras | responde `w`, status rotativo, `>halloween` `/halloween` (countdown + status da call), `>deadlock` `/deadlock`, digest + `>quests` (diárias e streak) |
+| extras | responde `w`, status rotativo, `>halloween` `/halloween` (countdown + status da call), `>deadlock` `/deadlock` `>rank` (rank com progresso), digest + `>quests` (diárias e streak) |
 
 admin: `>restart`, `>setxp`, `>dar`.
 

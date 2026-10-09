@@ -282,6 +282,79 @@ def buscar_fontes() -> dict[str, str]:
     return mapa
 
 
+# ─── rank bonitinho ───
+
+ROMANOS = {1: "I", 2: "II", 3: "III", 4: "IV", 5: "V", 6: "VI"}
+
+
+def romano(subrank: int) -> str:
+    """1-6 -> I-VI. fora disso devolve o numero puro."""
+    return ROMANOS.get(subrank, str(subrank))
+
+
+def info_rank(rank: dict, nomes: dict[int, str]) -> dict:
+    """traduz /rank em texto de exibicao + progresso pro proximo.
+
+    Retorna {tier, tier_nome, sub, badge, obscurus, topo, atual,
+    falta, rank_txt, proximo_txt}. atual/falta em pontos (subrank = 1000).
+    """
+    tier = int(rank.get("rank", 0) or 0)
+    sub = int(rank.get("subrank", 0) or 0)
+    badge = int(rank.get("badge", 0) or 0)
+    tier_nome = nomes.get(tier, "Obscurus")
+    if tier <= 0:
+        return {
+            "tier": 0,
+            "tier_nome": "Obscurus",
+            "sub": 0,
+            "badge": badge,
+            "obscurus": True,
+            "topo": False,
+            "atual": 0,
+            "falta": 0,
+            "rank_txt": "obscurus",
+            "proximo_txt": "",
+        }
+    rank_txt = f"{tier_nome} {romano(sub)}".strip()
+    topo = tier >= 11 and sub >= 6
+    if topo:
+        return {
+            "tier": tier,
+            "tier_nome": tier_nome,
+            "sub": sub,
+            "badge": badge,
+            "obscurus": False,
+            "topo": True,
+            "atual": 1000,
+            "falta": 0,
+            "rank_txt": rank_txt,
+            "proximo_txt": "",
+        }
+    if sub >= 6:
+        proximo_txt = f"{nomes.get(tier + 1, tier_nome)} I"
+    else:
+        proximo_txt = f"{tier_nome} {romano(sub + 1)}"
+    atual = 0
+    ultimo = rank.get("last_match") or {}
+    try:
+        atual = int(ultimo.get("player_rank_final_flat_progress", 0) or 0) % 1000
+    except (TypeError, ValueError):
+        atual = 0
+    falta = max(0, 1000 - atual)
+    return {
+        "tier": tier,
+        "tier_nome": tier_nome,
+        "sub": sub,
+        "badge": badge,
+        "obscurus": False,
+        "topo": False,
+        "atual": atual,
+        "falta": falta,
+        "rank_txt": rank_txt,
+        "proximo_txt": proximo_txt,
+    }
+
+
 # ─── agregação ───
 
 

@@ -56,7 +56,7 @@ class Niveis(commands.Cog, name="Níveis"):
             await message.channel.send(embed=embed)
 
     # ─── >xp ───
-    @commands.command(name="xp", aliases=["rank"])
+    @commands.command(name="xp")
     async def xp(self, ctx: commands.Context, membro: discord.Member = None):
         """veja seu nível e XP atual."""
         membro = membro or ctx.author
@@ -120,31 +120,6 @@ class Niveis(commands.Cog, name="Níveis"):
         self, interaction: discord.Interaction, membro: discord.Member | None = None
     ):
         """versão slash do >xp."""
-        membro = membro or interaction.user
-        xp, nivel = await asyncio.to_thread(data.buscar_xp, membro.id)
-
-        xp_prox = data.xp_para_proximo(nivel)
-        celulas = int((xp / xp_prox) * BARRA_CELULAS)
-        progresso = BARRA_CHEIA * celulas + BARRA_VAZIA * (BARRA_CELULAS - celulas)
-
-        embed = discord.Embed(
-            title=f"Rank de {membro.display_name}",
-            color=visual.PRIMARY,
-        )
-        embed.add_field(name="Nível", value=str(nivel), inline=True)
-        embed.add_field(name="XP", value=f"{xp}/{xp_prox}", inline=True)
-        embed.add_field(name="Progresso", value=f"`{progresso}`", inline=False)
-        embed.set_thumbnail(url=membro.display_avatar.url)
-        embed.set_footer(text=visual.FOOTER)
-        await interaction.response.send_message(embed=embed)
-
-    # ─── /rank (alias antigo do /xp) ───
-    @app_commands.command(name="rank", description="veja seu nível e XP atual.")
-    @app_commands.describe(membro="ver o rank de outro membro (opcional)")
-    async def rank_slash(
-        self, interaction: discord.Interaction, membro: discord.Member | None = None
-    ):
-        """alias antigo: mesmo que /xp."""
         membro = membro or interaction.user
         xp, nivel = await asyncio.to_thread(data.buscar_xp, membro.id)
 

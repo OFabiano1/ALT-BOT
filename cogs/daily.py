@@ -13,6 +13,7 @@ from discord.ext import commands, tasks
 
 import data
 import deadlock_api
+import discord_quests
 import visual
 
 log = logging.getLogger("alt.daily")
@@ -131,14 +132,40 @@ class DiariasView(discord.ui.View):
             )
 
 
-def _texto_digest() -> str:
-    return (
+def _linhas_quests_discord() -> str:
+    # secao some em silencio se a api cair; o resto do digest segue.
+    try:
+        ativas = discord_quests.buscar_ativas()
+    except Exception:
+        log.exception("diarias: quests do discord fora do ar")
+        return ""
+    linhas = []
+    for q in ativas:
+        if not q["nome"]:
+            continue
+        partes = [f"• [{q['nome']}]({q['url']})"]
+        if q["tarefas"]:
+            partes.append(", ".join(q["tarefas"]))
+        extras = " · ".join(p for p in [q["recompensa"], f"até {q['expira']}" if q["expira"] else ""] if p)
+        if extras:
+            partes.append(extras)
+        linhas.append(" — ".join(partes))
+    if not linhas:
+        return ""
+    return "🎯 **quests do discord:**\n" + "\n".join(linhas)
+
+
+def _texto_digest(secao_quests: str = "") -> str:
+    texto = (
         "🌅 **bom dia! diárias de hoje:**\n\n"
         f"🧩 termo do dia — {TERMO_URL}\n"
         "🎮 deadlock — joga **1 partida** (verifico sozinho)\n"
-        "💬 manda **10 mensagens** por aqui\n\n"
+        "💬 manda **10 mensagens** por aqui\n"
         "fecha as 3 e mantém tua streak 🔥 — `>quests` pra ver"
     )
+    if secao_quests:
+        texto += f"\n\n{secao_quests}"
+    return texto
 
 
 class Diarias(commands.Cog, name="Diárias"):
@@ -184,7 +211,8 @@ class Diarias(commands.Cog, name="Diárias"):
             return
         dia = hoje_str()
         try:
-            msg = await canal.send(_texto_digest(), view=DiariasView())
+            secao = await asyncio.to_thread(_linhas_quests_discord)
+            msg = await canal.send(_texto_digest(secao), view=DiariasView())
             await asyncio.to_thread(data.salvar_digest, dia, canal.id, msg.id)
             log.info("diarias: digest postado")
         except Exception:

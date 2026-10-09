@@ -169,7 +169,6 @@ ORDEM_AJUDA = (
     "Voz",
     "Deadlock",
     "Níveis",
-    "Diárias",
     "Servidor",
     "jogos",
     "Economia",
@@ -182,6 +181,7 @@ ORDEM_AJUDA = (
 # cogs que aparecem dentro de outra secao da ajuda.
 FUSAO_CATEGORIAS = {
     "GitHub": "Servidor",
+    "Diárias": "Servidor",
 }
 
 # banner da ajuda. padrao embutido, mas link de cdn expira:
@@ -197,7 +197,6 @@ CATEGORIA_EMOJIS = {
     "Voz": "🔊",
     "Deadlock": "🎮",
     "Níveis": "⭐",
-    "Diárias": "📅",
     "Servidor": "🖥️",
     "Jogos": "🎲",
     "Economia": "💎",

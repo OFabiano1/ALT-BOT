@@ -5,12 +5,16 @@
 
 import asyncio
 import datetime
+import hashlib
+import hmac
 import json
 import logging
 import os
 import re
+import threading
 import urllib.parse
 import urllib.request
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import discord
 from discord import app_commands
@@ -26,6 +30,13 @@ TOKEN = (os.getenv("GITHUB_TOKEN") or "").strip()
 CHANNEL_ID = int(os.getenv("GITHUB_CHANNEL_ID", "1261521924002152501") or 0)
 INTERVALO_MIN = 5
 MAX_POSTS = 3
+
+# webhook: porta do http + segredo pra validar a assinatura.
+# sem segredo o hook nem liga (fail closed).
+HOOK_PORT = int(os.getenv("PORT", "80") or 0)
+HOOK_SECRET = (os.getenv("GITHUB_WEBHOOK_SECRET") or "").strip()
+HOOK_PATH = "/github-webhook"
+HOOK_MAX_BODY = 1024 * 1024
 
 BASE = "https://api.github.com"
 HEADERS = {
@@ -205,16 +216,8 @@ async def _pushes_novos() -> list[tuple[dict, str | None]]:
     return saidas
 
 
-def _texto_push(evento: dict, wf: str | None) -> str:
-    repo = evento["repo"]["name"]
-    commits = evento.get("detalhes") or [
-        {
-            "autor": c.get("author", {}).get("name", USER),
-            "msg": c["message"].splitlines()[0][:120],
-            "url": f"https://github.com/{repo}",
-        }
-        for c in evento.get("payload", {}).get("commits", [])[:MAX_POSTS]
-    ]
+def _texto_push(repo: str, detalhes: list[dict] | None, wf: str | None) -> str:
+    commits = (detalhes or [])[:MAX_POSTS]
     linhas = [f"🦎 {repo}"]
     if not commits:
         # sem detalhe nenhum: avisa generico com link.
@@ -230,6 +233,132 @@ def _texto_push(evento: dict, wf: str | None) -> str:
     if wf:
         linhas.append(f"Workflow: {wf}")
     return "\n".join(linhas)
+
+
+async def _publicar(bot, repo: str, detalhes: list[dict] | None, wf: str | None):
+    """manda o push pros chats vinculados (ou fallback)."""
+    canais = await asyncio.to_thread(data.destinos_repo, repo)
+    if not canais and CHANNEL_ID:
+        canais = [CHANNEL_ID]
+    for chat_id in canais:
+        canal = bot.get_channel(chat_id)
+        if canal is None:
+            try:
+                canal = await bot.fetch_channel(chat_id)
+            except Exception:
+                log.exception("github: canal %d nao encontrado", chat_id)
+                continue
+        try:
+            await canal.send(_texto_push(repo, detalhes, wf))
+            log.info("github: postei push de %s no chat %d", repo, chat_id)
+        except Exception:
+            log.exception("github: falha ao postar %s", repo)
+
+
+async def _receber_push(bot, payload: dict, delivery: str):
+    """processa um push vindo do webhook. idempotente pelo delivery id."""
+    repo = (payload.get("repository") or {}).get("full_name", "")
+    if not repo:
+        return
+    if payload.get("deleted"):
+        log.info("github: push de delete em %s ignorado", repo)
+        return
+    chave = f"wh:{delivery}"
+    if await asyncio.to_thread(data.viu_evento, chave):
+        return
+    commits = []
+    for c in (payload.get("commits") or [])[:MAX_POSTS]:
+        autor = (c.get("author") or {}).get("username") or (c.get("author") or {}).get(
+            "name", USER
+        )
+        commits.append(
+            {
+                "autor": autor,
+                "msg": (c.get("message") or "").splitlines()[0][:120]
+                if c.get("message")
+                else "(sem mensagem)",
+                "url": c.get("url") or f"https://github.com/{repo}",
+            }
+        )
+    try:
+        runs, _ = await asyncio.to_thread(
+            _get, f"/repos/{repo}/actions/runs", {"per_page": 1}
+        )
+        lista = runs.get("workflow_runs") if isinstance(runs, dict) else runs
+        wf = _linha_workflow(lista)
+    except Exception:
+        log.exception("github: falha ao buscar workflow de %s", repo)
+        wf = None
+    await asyncio.to_thread(data.salvar_evento, chave)
+    await _publicar(bot, repo, commits, wf)
+
+
+def _assinatura_ok(body: bytes, assinatura: str | None) -> bool:
+    if not HOOK_SECRET or not assinatura:
+        return False
+    esperado = "sha256=" + hmac.new(HOOK_SECRET.encode(), body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(esperado, assinatura)
+
+
+def iniciar_hook(bot, host: str = "0.0.0.0", porta: int | None = None):
+    """sobe o receptor de webhook numa thread. porta 0 = efemera (teste)."""
+    if not HOOK_SECRET:
+        log.warning("GITHUB_WEBHOOK_SECRET nao definido — hook desligado")
+        return None
+
+    class Hook(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            log.debug("github hook: %s", args[0] % args[1:])
+
+        def _responder(self, codigo: int, texto: str = "ok"):
+            corpo = texto.encode()
+            self.send_response(codigo)
+            self.send_header("Content-Length", str(len(corpo)))
+            self.end_headers()
+            self.wfile.write(corpo)
+
+        def do_POST(self):
+            if self.path != HOOK_PATH:
+                self._responder(404, "nada aqui")
+                return
+            tamanho = int(self.headers.get("Content-Length") or 0)
+            if tamanho <= 0 or tamanho > HOOK_MAX_BODY:
+                self._responder(400, "tamanho invalido")
+                return
+            corpo = self.rfile.read(tamanho)
+            if not _assinatura_ok(corpo, self.headers.get("X-Hub-Signature-256")):
+                log.warning("github hook: assinatura invalida")
+                self._responder(401, "assinatura invalida")
+                return
+            evento = self.headers.get("X-GitHub-Event", "")
+            if evento == "ping":
+                log.info("github hook: ping ok")
+                self._responder(200, "pong")
+                return
+            if evento != "push":
+                self._responder(200, "ignorado")
+                return
+            try:
+                payload = json.loads(corpo.decode("utf-8"))
+            except Exception:
+                self._responder(400, "json invalido")
+                return
+            delivery = self.headers.get("X-GitHub-Delivery", "")
+            asyncio.run_coroutine_threadsafe(_receber_push(bot, payload, delivery), bot.loop)
+            self._responder(200, "ok")
+
+    porta = HOOK_PORT if porta is None else porta
+    try:
+        servidor = ThreadingHTTPServer((host, porta), Hook)
+    except Exception:
+        log.exception("github hook: nao consegui escutar na porta %d", porta)
+        return None
+    thread = threading.Thread(
+        target=servidor.serve_forever, kwargs={"poll_interval": 30}, daemon=True
+    )
+    thread.start()
+    log.info("github hook: ouvindo %s:%d%s", host, servidor.server_port, HOOK_PATH)
+    return servidor
 
 
 def _limpar_repo(texto: str) -> str | None:
@@ -386,24 +515,11 @@ class GitHub(commands.Cog, name="GitHub"):
 
     @tasks.loop(minutes=INTERVALO_MIN)
     async def vigia(self):
+        # rede de seguranca do webhook: pega o que o hook perdeu.
         for evento, wf in await _pushes_novos():
-            repo = evento["repo"]["name"]
-            canais = await asyncio.to_thread(data.destinos_repo, repo)
-            if not canais and CHANNEL_ID:
-                canais = [CHANNEL_ID]
-            for chat_id in canais:
-                canal = self.bot.get_channel(chat_id)
-                if canal is None:
-                    try:
-                        canal = await self.bot.fetch_channel(chat_id)
-                    except Exception:
-                        log.exception("github: canal %d nao encontrado", chat_id)
-                        continue
-                try:
-                    await canal.send(_texto_push(evento, wf))
-                    log.info("github: postei push de %s no chat %d", repo, chat_id)
-                except Exception:
-                    log.exception("github: falha ao postar %s", repo)
+            await _publicar(
+                self.bot, evento["repo"]["name"], evento.get("detalhes"), wf
+            )
 
     @vigia.before_loop
     async def before_vigia(self):
@@ -416,3 +532,4 @@ class GitHub(commands.Cog, name="GitHub"):
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(GitHub(bot))
+    iniciar_hook(bot)

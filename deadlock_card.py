@@ -467,8 +467,21 @@ def render_rank(pacote: dict, info: dict) -> bytes:
         pegar = _fontes()
         tier = int(info.get("tier", 0) or 0)
         sub = int(info.get("sub", 0) or 0)
+        # proximo: sobe o sub, ou vira tier+1 sub 1. nada se obscurus/topo.
+        if info.get("obscurus") or info.get("topo"):
+            nt, ns = 0, 0
+        elif sub >= 6:
+            nt, ns = tier + 1, 1
+        else:
+            nt, ns = tier, sub + 1
+        _baixar_todos(
+            [
+                (f"rank_{tier}_{sub}.png", _url_rank_sub(tier, sub)),
+                (f"rank_{nt}_{ns}.png", _url_rank_sub(nt, ns) if nt else None),
+            ]
+        )
         badge = _retrato(_url_rank_sub(tier, sub), f"rank_{tier}_{sub}.png", 240)
-        altura = 480
+        altura = 620
         img, desenho = _base(altura)
         y = MARGEM
         if badge is not None:
@@ -522,10 +535,30 @@ def render_rank(pacote: dict, info: dict) -> bytes:
             y += 44
             desenho.text(
                 (MARGEM, y),
-                f"faltam {info.get('falta', 0)} pontos pro próximo: {info.get('proximo_txt', '')}",
+                f"faltam {info.get('falta', 0)} pontos",
                 font=pegar("texto_bold", 30),
                 fill=TEXTO,
             )
+            y += 52
+            desenho.text(
+                (MARGEM, y), "PRÓXIMO", font=pegar("texto", 24), fill=TEXTO_APAGADO
+            )
+            prox = _retrato(_url_rank_sub(nt, ns), f"rank_{nt}_{ns}.png", 100)
+            if prox is not None:
+                img.paste(prox, (MARGEM, y + 32), prox)
+                desenho.text(
+                    (MARGEM + 120, y + 58),
+                    _seguro(info.get("proximo_txt", "")).upper(),
+                    font=pegar("display", 40),
+                    fill=VIOLETA_CLARO,
+                )
+            else:
+                desenho.text(
+                    (MARGEM, y + 32),
+                    info.get("proximo_txt", ""),
+                    font=pegar("texto_bold", 30),
+                    fill=TEXTO,
+                )
         _rodape(desenho, altura, pegar)
         saida = BytesIO()
         img.save(saida, format="PNG")

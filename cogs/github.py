@@ -318,7 +318,7 @@ def iniciar_hook(bot, host: str = "0.0.0.0", porta: int | None = None):
             self.wfile.write(corpo)
 
         def do_POST(self):
-            if self.path != HOOK_PATH:
+            if self.path.rstrip("/") != HOOK_PATH:
                 self._responder(404, "nada aqui")
                 return
             tamanho = int(self.headers.get("Content-Length") or 0)

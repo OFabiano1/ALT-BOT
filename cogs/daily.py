@@ -18,7 +18,7 @@ import visual
 log = logging.getLogger("alt.daily")
 
 TERMO_URL = (os.getenv("TERMO_URL") or "https://term.ooo/").strip()
-DIGEST_CHANNEL_ID = int(os.getenv("DIGEST_CHANNEL_ID", "1310398751575113758") or 0)
+DIGEST_CHANNEL_ID = data.env_int("DIGEST_CHANNEL_ID", 1310398751575113758)
 
 # utc-3 fixo, mesmo do halloween.
 TZ = datetime.timezone(datetime.timedelta(hours=-3))

@@ -5,13 +5,14 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+import data
 import visual
 
 log = logging.getLogger("alt.tickets")
 
 # ─── configure aqui ou no .env ───
-MOD_ROLE_ID       = int(os.getenv("MOD_ROLE_ID", "0"))
-TICKET_CHANNEL_ID = int(os.getenv("TICKET_CHANNEL_ID", "1148417761987534918") or 0)
+MOD_ROLE_ID       = data.env_int("MOD_ROLE_ID", 0)
+TICKET_CHANNEL_ID = data.env_int("TICKET_CHANNEL_ID", 1148417761987534918)
 # banner do painel. padrao embutido, mas link de cdn expira:
 # quando cair, bota o link novo no env que ele prevalece.
 TICKET_BANNER_URL = os.getenv(

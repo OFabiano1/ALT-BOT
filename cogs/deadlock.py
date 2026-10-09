@@ -539,7 +539,7 @@ class Deadlock(commands.Cog, name="Deadlock"):
             "persona": perfil.get("personaname") or f"steam {account_id}",
             "rank_emoji": visual.deadlock_rank_emoji(ranks.get(int(rank.get("rank", 0) or 0), "")),
         }
-        info = deadlock_api.info_rank(rank, ranks)
+        info = deadlock_api.info_rank(rank, deadlock_api.NOMES_PT)
         embed = _embed_rank(pacote, info)
         arquivo = await _anexar_card_rank(pacote, info, embed)
         await ctx.send(embed=embed, file=arquivo)
@@ -584,7 +584,7 @@ class Deadlock(commands.Cog, name="Deadlock"):
             "persona": perfil.get("personaname") or f"steam {account_id}",
             "rank_emoji": visual.deadlock_rank_emoji(ranks.get(int(rank.get("rank", 0) or 0), "")),
         }
-        info = deadlock_api.info_rank(rank, ranks)
+        info = deadlock_api.info_rank(rank, deadlock_api.NOMES_PT)
         embed = _embed_rank(pacote, info)
         arquivo = await _anexar_card_rank(pacote, info, embed)
         await interaction.followup.send(embed=embed, file=arquivo)

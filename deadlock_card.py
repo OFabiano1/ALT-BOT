@@ -467,98 +467,114 @@ def render_rank(pacote: dict, info: dict) -> bytes:
         pegar = _fontes()
         tier = int(info.get("tier", 0) or 0)
         sub = int(info.get("sub", 0) or 0)
-        # proximo: sobe o sub, ou vira tier+1 sub 1. nada se obscurus/topo.
-        if info.get("obscurus") or info.get("topo"):
+        # proximo: sobe o sub, ou vira tier+1 sub 1. obscurus mira o tier 1.
+        if info.get("topo"):
             nt, ns = 0, 0
+        elif info.get("obscurus"):
+            nt, ns = 1, 1
         elif sub >= 6:
             nt, ns = tier + 1, 1
         else:
             nt, ns = tier, sub + 1
+        assets = deadlock_api.buscar_rank_assets()
+        img_atual = (assets.get(tier) or {}).get("imagem")
+        img_prox = (assets.get(nt) or {}).get("imagem") if nt else None
         _baixar_todos(
             [
-                (f"rank_{tier}_{sub}.png", _url_rank_sub(tier, sub)),
-                (f"rank_{nt}_{ns}.png", _url_rank_sub(nt, ns) if nt else None),
+                (f"trank_{tier}.png", img_atual),
+                (f"trank_{nt}.png", img_prox),
             ]
         )
-        badge = _retrato(_url_rank_sub(tier, sub), f"rank_{tier}_{sub}.png", 240)
-        altura = 620
+        atual = _retrato(img_atual, f"trank_{tier}.png", 200)
+        prox = _retrato(img_prox, f"trank_{nt}.png", 200) if nt else None
+        altura = 560
         img, desenho = _base(altura)
-        y = MARGEM
-        if badge is not None:
-            img.paste(badge, (MARGEM, y), badge)
-        else:
-            desenho.rounded_rectangle([MARGEM, y, MARGEM + 200, y + 240], 24, fill=BORDA)
-            desenho.text(
-                (MARGEM + 78, y + 82), "?", font=pegar("display", 72), fill=TEXTO_APAGADO
-            )
-        x_txt = MARGEM + 280
         desenho.text(
-            (x_txt, y + 8),
+            (MARGEM, MARGEM),
             _seguro(pacote.get("persona", "steam")),
-            font=pegar("display", 48),
+            font=pegar("display", 44),
             fill=TEXTO,
         )
+        y_badge = 120
+        if atual is not None:
+            img.paste(atual, (MARGEM, y_badge), atual)
+        x_prox = LARGURA - MARGEM - 200
+        if prox is not None:
+            img.paste(prox, (x_prox, y_badge), prox)
+        else:
+            desenho.text(
+                (x_prox + 40, y_badge + 80),
+                "TOPO",
+                font=pegar("display", 48),
+                fill=VIOLETA_CLARO,
+            )
+        fonte_nome = pegar("texto_bold", 28)
+        nome_atual = _seguro(info.get("tier_nome", "obscurus")).upper()
+        nome_prox = _seguro(info.get("proximo_nome", "")).upper()
+        w = desenho.textlength(nome_atual, font=fonte_nome)
         desenho.text(
-            (x_txt, y + 78),
-            _seguro(info.get("rank_txt", "obscurus")).upper(),
-            font=pegar("display", 60),
-            fill=VIOLETA_CLARO,
+            (MARGEM + (200 - w) / 2, y_badge + 210),
+            nome_atual,
+            font=fonte_nome,
+            fill=TEXTO,
         )
-        y += 280
-        fonte_linha = pegar("texto", 28)
+        if nome_prox:
+            w2 = desenho.textlength(nome_prox, font=fonte_nome)
+            desenho.text(
+                (x_prox + (200 - w2) / 2, y_badge + 210),
+                nome_prox,
+                font=fonte_nome,
+                fill=TEXTO,
+            )
+        y = y_badge + 280
+        # pips dos subranks com parcial no atual
         if info.get("obscurus"):
+            fracao, marcado = 0.0, 0
+        elif info.get("topo"):
+            fracao, marcado = 1.0, 6
+        else:
+            fracao = info.get("atual", 0) / 1000.0
+            marcado = max(1, min(6, sub))
+        x0, n_seg, gap = MARGEM, 6, 12
+        larg = (LARGURA - MARGEM * 2 - gap * (n_seg - 1)) // n_seg
+        for i in range(1, n_seg + 1):
+            x = x0 + (i - 1) * (larg + gap)
+            desenho.rounded_rectangle([x, y, x + larg, y + 26], 13, fill=BORDA)
+            if info.get("topo") or i < marcado:
+                desenho.rounded_rectangle([x, y, x + larg, y + 26], 13, fill=VERDE)
+            elif i == marcado and fracao > 0:
+                cheio = int(larg * max(0.0, min(1.0, fracao)))
+                if cheio > 0:
+                    desenho.rounded_rectangle([x, y, x + cheio, y + 26], 13, fill=VERDE)
+        y += 44
+        if marcado:
+            cx = x0 + (marcado - 1) * (larg + gap) + larg / 2
+            rom = deadlock_api.romano(marcado)
+            fonte_rom = pegar("display", 36)
+            w3 = desenho.textlength(rom, font=fonte_rom)
+            desenho.text((cx - w3 / 2, y - 108), rom, font=fonte_rom, fill=TEXTO)
+            desenho.polygon(
+                [(cx - 10, y - 46), (cx + 10, y - 46), (cx, y - 34)],
+                fill=TEXTO,
+            )
+            linha = (
+                "topo! sem próximo."
+                if info.get("topo")
+                else f"faltam {info.get('falta', 0)} pontos"
+            )
+            desenho.text(
+                (MARGEM, y),
+                linha,
+                font=pegar("texto", 24),
+                fill=TEXTO_APAGADO,
+            )
+        else:
             desenho.text(
                 (MARGEM, y),
                 "em placement: jogue ranqueadas pra ganhar rank!",
-                font=fonte_linha,
+                font=pegar("texto", 24),
                 fill=TEXTO,
             )
-        elif info.get("topo"):
-            _barra(desenho, MARGEM, y, LARGURA - MARGEM * 2, 26, 1.0)
-            desenho.text(
-                (MARGEM, y + 44),
-                "topo do eternus. sem proximo, so lenda.",
-                font=fonte_linha,
-                fill=TEXTO,
-            )
-        else:
-            _barra(
-                desenho, MARGEM, y, LARGURA - MARGEM * 2, 26, info.get("atual", 0) / 1000.0
-            )
-            y += 44
-            desenho.text(
-                (MARGEM, y),
-                f"{info.get('atual', 0)} / 1000 pontos",
-                font=fonte_linha,
-                fill=TEXTO_APAGADO,
-            )
-            y += 44
-            desenho.text(
-                (MARGEM, y),
-                f"faltam {info.get('falta', 0)} pontos",
-                font=pegar("texto_bold", 30),
-                fill=TEXTO,
-            )
-            y += 52
-            desenho.text(
-                (MARGEM, y), "PRÓXIMO", font=pegar("texto", 24), fill=TEXTO_APAGADO
-            )
-            prox = _retrato(_url_rank_sub(nt, ns), f"rank_{nt}_{ns}.png", 100)
-            if prox is not None:
-                img.paste(prox, (MARGEM, y + 32), prox)
-                desenho.text(
-                    (MARGEM + 120, y + 58),
-                    _seguro(info.get("proximo_txt", "")).upper(),
-                    font=pegar("display", 40),
-                    fill=VIOLETA_CLARO,
-                )
-            else:
-                desenho.text(
-                    (MARGEM, y + 32),
-                    info.get("proximo_txt", ""),
-                    font=pegar("texto_bold", 30),
-                    fill=TEXTO,
-                )
         _rodape(desenho, altura, pegar)
         saida = BytesIO()
         img.save(saida, format="PNG")

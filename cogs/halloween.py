@@ -11,12 +11,13 @@ import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 
+import data
 import visual
 
 log = logging.getLogger("alt.halloween")
 
-TEXT_CHANNEL_ID = int(os.getenv("HALLOWEEN_TEXT_CHANNEL_ID", "1058335767274995752") or 0)
-VOICE_CHANNEL_ID = int(os.getenv("HALLOWEEN_VOICE_CHANNEL_ID", "1310398751575113758") or 0)
+TEXT_CHANNEL_ID = data.env_int("HALLOWEEN_TEXT_CHANNEL_ID", 1058335767274995752)
+VOICE_CHANNEL_ID = data.env_int("HALLOWEEN_VOICE_CHANNEL_ID", 1310398751575113758)
 
 # UTC-3 fixo. ZoneInfo("America/Sao_Paulo") precisaria do pacote `tzdata`
 # no Windows — sem DST desde 2019, o offset fixo é equivalente e sem dep nova.

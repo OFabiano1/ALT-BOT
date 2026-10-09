@@ -27,13 +27,13 @@ log = logging.getLogger("alt.github")
 
 USER = (os.getenv("GITHUB_USER") or "OFabiano1").strip()
 TOKEN = (os.getenv("GITHUB_TOKEN") or "").strip()
-CHANNEL_ID = int(os.getenv("GITHUB_CHANNEL_ID", "1261521924002152501") or 0)
+CHANNEL_ID = data.env_int("GITHUB_CHANNEL_ID", 1261521924002152501)
 INTERVALO_MIN = 5
 MAX_POSTS = 3
 
 # webhook: porta do http + segredo pra validar a assinatura.
 # sem segredo o hook nem liga (fail closed).
-HOOK_PORT = int(os.getenv("PORT", "80") or 0)
+HOOK_PORT = data.env_int("PORT", 80)
 HOOK_SECRET = (os.getenv("GITHUB_WEBHOOK_SECRET") or "").strip()
 HOOK_PATH = "/github-webhook"
 HOOK_MAX_BODY = 1024 * 1024

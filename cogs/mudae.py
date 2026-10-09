@@ -18,8 +18,8 @@ import data
 
 log = logging.getLogger("alt.mudae")
 
-MUDAE_BOT_ID = int(os.getenv("MUDAE_BOT_ID", "432610292342587392"))
-DEFAULT_MINUTES = max(1, int(os.getenv("MUDAE_DEFAULT_MINUTES", "60") or 60))
+MUDAE_BOT_ID = data.env_int("MUDAE_BOT_ID", 432610292342587392)
+DEFAULT_MINUTES = max(1, data.env_int("MUDAE_DEFAULT_MINUTES", 60))
 
 # comandos do Mudae que consomem roll. `$tu`, `$daily`, `$vote`, `$dk`
 # etc. não entram — só os de roletar waifu/husbando.

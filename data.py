@@ -3,10 +3,14 @@
 # caminho absoluto pra nao depender de onde o app foi aberto.
 
 import json
+import logging
+import os
 import sqlite3
 import threading
 from contextlib import contextmanager
 from pathlib import Path
+
+log = logging.getLogger("alt.data")
 
 DB_PATH = Path(__file__).parent / "data" / "alt.db"
 LEGACY_XP = Path(__file__).parent / "data" / "xp.json"
@@ -22,6 +26,18 @@ _lock = threading.Lock()
 # coluna de placar para cada resultado. Mapeamento explícito em vez de
 # derivar a chave do primeiro caractere da string.
 COLUNA_PTP = {"vitoria": "v", "derrota": "d", "empate": "e"}
+
+
+def env_int(nome: str, padrao: int) -> int:
+    """int de env que nunca quebra o boot: valor ruim vira padrao com aviso."""
+    bruto = (os.getenv(nome) or "").strip()
+    if not bruto:
+        return padrao
+    try:
+        return int(bruto)
+    except ValueError:
+        log.warning("env %s invalida (%r), usando padrao %d", nome, bruto, padrao)
+        return padrao
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS xp (

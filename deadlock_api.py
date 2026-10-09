@@ -286,6 +286,22 @@ def buscar_fontes() -> dict[str, str]:
 
 ROMANOS = {1: "I", 2: "II", 3: "III", 4: "IV", 5: "V", 6: "VI"}
 
+# nomes em pt como aparecem no jogo pra comunidade br.
+NOMES_PT = {
+    0: "Obscurus",
+    1: "Iniciante",
+    2: "Buscador",
+    3: "Acólito",
+    4: "Sentinela",
+    5: "Místico",
+    6: "Ritualista",
+    7: "Emissário",
+    8: "Oráculo",
+    9: "Fantasma",
+    10: "Ascendente",
+    11: "Eternus",
+}
+
 
 def romano(subrank: int) -> str:
     """1-6 -> I-VI. fora disso devolve o numero puro."""
@@ -314,6 +330,7 @@ def info_rank(rank: dict, nomes: dict[int, str]) -> dict:
             "falta": 0,
             "rank_txt": "obscurus",
             "proximo_txt": "",
+            "proximo_nome": nomes.get(1, ""),
         }
     rank_txt = f"{tier_nome} {romano(sub)}".strip()
     topo = tier >= 11 and sub >= 6
@@ -329,11 +346,15 @@ def info_rank(rank: dict, nomes: dict[int, str]) -> dict:
             "falta": 0,
             "rank_txt": rank_txt,
             "proximo_txt": "",
+            "proximo_nome": "",
         }
     if sub >= 6:
-        proximo_txt = f"{nomes.get(tier + 1, tier_nome)} I"
+        nt = tier + 1
+        proximo_txt = f"{nomes.get(nt, tier_nome)} I"
     else:
+        nt = tier
         proximo_txt = f"{tier_nome} {romano(sub + 1)}"
+    proximo_nome = nomes.get(nt, "")
     atual = 0
     ultimo = rank.get("last_match") or {}
     try:
@@ -352,6 +373,7 @@ def info_rank(rank: dict, nomes: dict[int, str]) -> dict:
         "falta": falta,
         "rank_txt": rank_txt,
         "proximo_txt": proximo_txt,
+        "proximo_nome": proximo_nome,
     }
 
 

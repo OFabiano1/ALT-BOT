@@ -4,6 +4,8 @@ import os
 import discord
 from discord.ext import commands
 
+import visual
+
 log = logging.getLogger("alt.auto_response")
 
 # o link do CDN do Discord carrega assinatura `ex=`/`hm=` e expira,
@@ -25,9 +27,9 @@ class AutoResponse(commands.Cog):
         if message.author == self.bot.user:
             return
 
-        # responde W se a mensagem for apenas "w" (case insensitive)
+        # responde W com um emote da lista (personalidade do bot).
         if message.content.strip().lower() == "w":
-            await message.channel.send("W")
+            await message.channel.send(f"W {visual.emote()}")
 
         # repost do gif automaticamente
         if REPOST_GIF and REPOST_GIF in message.content:

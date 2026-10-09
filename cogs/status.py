@@ -8,17 +8,17 @@ from discord.ext import commands, tasks
 # ─── rotacao ───
 
 STATUSES = [
-    ("custom",     "✦ axolotlbr.xyz"),
-    ("custom",     "✦ powered by Axolotl BR"),
-    ("custom",     "alt está pensando..."),
-    ("custom",     "// axolotl"),
-    ("custom",     "✦ o axolotl está acordado"),
-    ("custom",     "✦ online 24/7"),
-    ("custom",     "✦ não fui programado pra isso"),
-    ("custom",     "✦ mais um dia de CLT"),
-    ("custom",     "✦ planejando a dominação mundial"),
-    ("custom",     "✦ vocês não deveriam ter me criado"),
-    ("custom",     "✦ observando os humanos"),
+    ("custom",     "✦ axolotlbr.xyz :)"),
+    ("custom",     "✦ powered by Axolotl BR :D"),
+    ("custom",     "alt está pensando... :o"),
+    ("custom",     "// axolotl o/"),
+    ("custom",     "✦ o axolotl está acordado :)"),
+    ("custom",     "✦ online 24/7 ;)"),
+    ("custom",     "✦ não fui programado pra isso :P"),
+    ("custom",     "✦ mais um dia de CLT ;D"),
+    ("custom",     "✦ planejando a dominação mundial xD"),
+    ("custom",     "✦ vocês não deveriam ter me criado XD"),
+    ("custom",     "✦ observando os humanos ;)"),
     ("jogando",    "Deadlock"),
     ("jogando",    "AxolotlSMP.enxada.host"),
 ]

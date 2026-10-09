@@ -4,6 +4,7 @@
 # etag. sem comando: nao aparece na ajuda, so trabalha.
 
 import asyncio
+import datetime
 import json
 import logging
 import os
@@ -77,6 +78,58 @@ def _linha_workflow(runs: list | None) -> str | None:
     return f"{nome}: {'✅ passou.' if ok else '❌ falhou.'}"
 
 
+async def _detalhes_push(repo: str, before: str, head: str) -> list[dict]:
+    """autor+msg reais via compare (o evento costuma vir sem commits).
+
+    Retorna [{autor, msg, url}] (max 3) ou [] se nao der pra descobrir.
+    """
+    if not before or not head:
+        return []
+    try:
+        comp, _ = await asyncio.to_thread(
+            _get, f"/repos/{repo}/compare/{before}...{head}"
+        )
+    except Exception:
+        log.exception("github: compare falhou pra %s", repo)
+        comp = None
+    if isinstance(comp, dict) and comp.get("commits"):
+        saida = []
+        for c in comp["commits"][:MAX_POSTS]:
+            autor = (c.get("author") or {}).get("login") or c["commit"]["author"]["name"]
+            saida.append(
+                {
+                    "autor": autor,
+                    "msg": c["commit"]["message"].splitlines()[0][:120],
+                    "url": c.get("html_url", f"https://github.com/{repo}"),
+                }
+            )
+        return saida
+    # plano b: o commit da ponta sozinho.
+    try:
+        um, _ = await asyncio.to_thread(_get, f"/repos/{repo}/commits/{head}")
+    except Exception:
+        return []
+    if not isinstance(um, dict):
+        return []
+    autor = (um.get("author") or {}).get("login") or um["commit"]["author"]["name"]
+    return [
+        {
+            "autor": autor,
+            "msg": um["commit"]["message"].splitlines()[0][:120],
+            "url": um.get("html_url", f"https://github.com/{repo}"),
+        }
+    ]
+
+
+def _idade_horas(iso: str) -> float | None:
+    try:
+        quando = datetime.datetime.fromisoformat(iso.replace("Z", "+00:00"))
+        agora = datetime.datetime.now(datetime.timezone.utc)
+        return max(0.0, (agora - quando).total_seconds() / 3600)
+    except (TypeError, ValueError):
+        return None
+
+
 async def _pushes_novos() -> list[tuple[dict, str | None]]:
     """push events ainda nao postados: [(evento, linha_workflow)]."""
     try:
@@ -86,7 +139,11 @@ async def _pushes_novos() -> list[tuple[dict, str | None]]:
         return []
     if not eventos:
         return []
-    pushes = [e for e in eventos if e.get("type") == "PushEvent"]
+    pushes = [
+        e
+        for e in eventos
+        if e.get("type") == "PushEvent" and not e.get("payload", {}).get("deleted")
+    ]
     if not pushes:
         return []
     algum_visto = False
@@ -95,12 +152,15 @@ async def _pushes_novos() -> list[tuple[dict, str | None]]:
             algum_visto = True
             break
     if not algum_visto:
-        # primeira vez: posta so o mais recente, marca o resto sem postar.
-        # (se postasse tudo, cuspia historico; se nada, o ultimo commit sumia.)
+        # primeira vez: posta so o mais recente E recente (<24h),
+        # marca o resto sem postar. banco zerado nao ressuscita push velho.
         for e in pushes:
             await asyncio.to_thread(data.salvar_evento, e["id"])
         log.info("github: monitorando pushes de %s", USER)
         novo = pushes[0]
+        idade = _idade_horas(novo.get("created_at", ""))
+        if idade is None or idade > 24:
+            return []
         repo = novo["repo"]["name"]
         try:
             runs, _ = await asyncio.to_thread(
@@ -111,6 +171,10 @@ async def _pushes_novos() -> list[tuple[dict, str | None]]:
         except Exception:
             log.exception("github: falha ao buscar workflow de %s", repo)
             wf = None
+        novo = dict(novo)
+        novo["detalhes"] = await _detalhes_push(
+            repo, novo.get("payload", {}).get("before", ""), novo.get("payload", {}).get("head", "")
+        )
         return [(novo, wf)]
     novos = []
     for e in reversed(pushes):
@@ -132,6 +196,10 @@ async def _pushes_novos() -> list[tuple[dict, str | None]]:
             except Exception:
                 log.exception("github: falha ao buscar workflow de %s", repo)
                 wfs[repo] = None
+        e = dict(e)
+        e["detalhes"] = await _detalhes_push(
+            repo, e.get("payload", {}).get("before", ""), e.get("payload", {}).get("head", "")
+        )
         await asyncio.to_thread(data.salvar_evento, e["id"])
         saidas.append((e, wfs[repo]))
     return saidas
@@ -139,25 +207,26 @@ async def _pushes_novos() -> list[tuple[dict, str | None]]:
 
 def _texto_push(evento: dict, wf: str | None) -> str:
     repo = evento["repo"]["name"]
-    commits = evento.get("payload", {}).get("commits", [])[:MAX_POSTS]
+    commits = evento.get("detalhes") or [
+        {
+            "autor": c.get("author", {}).get("name", USER),
+            "msg": c["message"].splitlines()[0][:120],
+            "url": f"https://github.com/{repo}",
+        }
+        for c in evento.get("payload", {}).get("commits", [])[:MAX_POSTS]
+    ]
     linhas = [f"🦎 {repo}"]
     if not commits:
-        # push grande: a api nem sempre lista os commits.
+        # sem detalhe nenhum: avisa generico com link.
         linhas.append(f"{USER} fez um novo push")
         linhas.append(f"https://github.com/{repo}")
     elif len(commits) == 1:
-        autor = commits[0].get("author", {}).get("name", USER)
-        msg = commits[0]["message"].splitlines()[0][:120]
-        sha = evento["payload"].get("head", "")[:7]
-        url = f"https://github.com/{repo}/commit/{sha}" if sha else f"https://github.com/{repo}"
-        linhas.append(f"{autor} fez um novo commit")
-        linhas.append(f"[{msg}]({url})")
+        linhas.append(f"{commits[0]['autor']} fez um novo commit")
+        linhas.append(f"[{commits[0]['msg']}]({commits[0]['url']})")
     else:
         linhas.append(f"{len(commits)} commits novos")
         for c in commits:
-            autor = c.get("author", {}).get("name", USER)
-            msg = c["message"].splitlines()[0][:120]
-            linhas.append(f"• {msg} — {autor}")
+            linhas.append(f"• [{c['msg']}]({c['url']}) — {c['autor']}")
     if wf:
         linhas.append(f"Workflow: {wf}")
     return "\n".join(linhas)

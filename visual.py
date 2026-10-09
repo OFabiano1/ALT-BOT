@@ -2,6 +2,7 @@
 # nada disso se espalha pelo resto do codigo, tudo importa daqui.
 
 import os
+import random
 
 try:
     from dotenv import load_dotenv
@@ -86,6 +87,17 @@ ERROR   = 0xFF7B7B
 
 # ─── assinatura ───
 FOOTER = "Player to Player • Axolotl BR"
+
+# ─── emotes de texto ───
+
+# a lista oficial, so ASCII (nada de unicode): todo charme do bot
+# sai daqui via emote(). nada de emoticon solto no resto do codigo.
+EMOTES = (":)", ":D", ";)", ";D", ":P", ":o", "xD", "XD", "o/")
+
+
+def emote() -> str:
+    """um emote aleatorio da lista."""
+    return random.choice(EMOTES)
 
 # ─── categorias da ajuda ───
 CATEGORIAS = {

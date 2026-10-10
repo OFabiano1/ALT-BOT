@@ -5,9 +5,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-import data
-import painel
 import visual
+import data
 
 # xp ganho por mensagem (mín, máx)
 XP_MIN = 10
@@ -19,25 +18,6 @@ COOLDOWN = 60  # segundos
 BARRA_CHEIA = "█"
 BARRA_VAZIA = "░"
 BARRA_CELULAS = 10
-
-
-def _texto_xp(membro, xp: int, nivel: int) -> tuple[str, list]:
-    xp_prox = data.xp_para_proximo(nivel)
-    celulas = int((xp / xp_prox) * BARRA_CELULAS)
-    progresso = BARRA_CHEIA * celulas + BARRA_VAZIA * (BARRA_CELULAS - celulas)
-    return (
-        f"Rank de {membro.display_name}",
-        [("Nível", str(nivel)), ("XP", f"{xp}/{xp_prox}"), ("Progresso", f"`{progresso}`")],
-    )
-
-
-def _painel_xp(membro, xp: int, nivel: int) -> discord.ui.LayoutView:
-    titulo, campos = _texto_xp(membro, xp, nivel)
-    return painel.montar(titulo, campos=campos, avatar=membro.display_avatar.url)
-
-
-def _painel_ranking(linhas: list[str]) -> discord.ui.LayoutView:
-    return painel.montar("Top 5 — Ranking de Níveis", linhas=linhas)
 
 
 class Niveis(commands.Cog, name="Níveis"):
@@ -65,12 +45,15 @@ class Niveis(commands.Cog, name="Níveis"):
         )
 
         if subiu:
-            await message.channel.send(
-                view=painel.montar(
-                    "Subiu de nível!",
-                    linhas=[f"{message.author.mention} agora é **nível {nivel}**! {visual.AXOLOTL}"],
-                )
+            embed = discord.Embed(
+                title="Subiu de nível!",
+                description=(
+                    f"{message.author.mention} agora é **nível {nivel}**! {visual.AXOLOTL}"
+                ),
+                color=visual.PRIMARY,
             )
+            embed.set_footer(text=visual.FOOTER)
+            await message.channel.send(embed=embed)
 
     # ─── >xp ───
     @commands.command(name="xp")
@@ -78,7 +61,21 @@ class Niveis(commands.Cog, name="Níveis"):
         """veja seu nível e XP atual."""
         membro = membro or ctx.author
         xp, nivel = await asyncio.to_thread(data.buscar_xp, membro.id)
-        await ctx.send(view=_painel_xp(membro, xp, nivel))
+
+        xp_prox = data.xp_para_proximo(nivel)
+        celulas = int((xp / xp_prox) * BARRA_CELULAS)
+        progresso = BARRA_CHEIA * celulas + BARRA_VAZIA * (BARRA_CELULAS - celulas)
+
+        embed = discord.Embed(
+            title=f"Rank de {membro.display_name}",
+            color=visual.PRIMARY,
+        )
+        embed.add_field(name="Nível", value=str(nivel), inline=True)
+        embed.add_field(name="XP", value=f"{xp}/{xp_prox}", inline=True)
+        embed.add_field(name="Progresso", value=f"`{progresso}`", inline=False)
+        embed.set_thumbnail(url=membro.display_avatar.url)
+        embed.set_footer(text=visual.FOOTER)
+        await ctx.send(embed=embed)
 
     # ─── >ranking ───
     @commands.command(name="ranking", aliases=["top"])
@@ -97,7 +94,13 @@ class Niveis(commands.Cog, name="Níveis"):
             nome = membro.display_name if membro else f"Usuário {user_id}"
             linhas.append(f"{medalhas[i]} {nome} — Nível **{nivel}** | {xp} XP")
 
-        await ctx.send(view=_painel_ranking(linhas))
+        embed = discord.Embed(
+            title="Top 5 — Ranking de Níveis",
+            description="\n".join(linhas),
+            color=visual.WARNING,
+        )
+        embed.set_footer(text=visual.FOOTER)
+        await ctx.send(embed=embed)
 
     # ─── >setxp (admin) ───
     @commands.command(name="setxp")
@@ -119,7 +122,21 @@ class Niveis(commands.Cog, name="Níveis"):
         """versão slash do >xp."""
         membro = membro or interaction.user
         xp, nivel = await asyncio.to_thread(data.buscar_xp, membro.id)
-        await interaction.response.send_message(view=_painel_xp(membro, xp, nivel))
+
+        xp_prox = data.xp_para_proximo(nivel)
+        celulas = int((xp / xp_prox) * BARRA_CELULAS)
+        progresso = BARRA_CHEIA * celulas + BARRA_VAZIA * (BARRA_CELULAS - celulas)
+
+        embed = discord.Embed(
+            title=f"Rank de {membro.display_name}",
+            color=visual.PRIMARY,
+        )
+        embed.add_field(name="Nível", value=str(nivel), inline=True)
+        embed.add_field(name="XP", value=f"{xp}/{xp_prox}", inline=True)
+        embed.add_field(name="Progresso", value=f"`{progresso}`", inline=False)
+        embed.set_thumbnail(url=membro.display_avatar.url)
+        embed.set_footer(text=visual.FOOTER)
+        await interaction.response.send_message(embed=embed)
 
     # ─── /ranking ───
     @app_commands.command(name="ranking", description="ranking dos top 5 membros do servidor.")
@@ -141,7 +158,13 @@ class Niveis(commands.Cog, name="Níveis"):
             nome = membro.display_name if membro else f"Usuário {user_id}"
             linhas.append(f"{medalhas[i]} {nome} — Nível **{nivel}** | {xp} XP")
 
-        await interaction.response.send_message(view=_painel_ranking(linhas))
+        embed = discord.Embed(
+            title="Top 5 — Ranking de Níveis",
+            description="\n".join(linhas),
+            color=visual.WARNING,
+        )
+        embed.set_footer(text=visual.FOOTER)
+        await interaction.response.send_message(embed=embed)
 
     # ─── /top (alias antigo do /ranking) ───
     @app_commands.command(name="top", description="ranking dos top 5 membros do servidor.")
@@ -163,7 +186,13 @@ class Niveis(commands.Cog, name="Níveis"):
             nome = membro.display_name if membro else f"Usuário {user_id}"
             linhas.append(f"{medalhas[i]} {nome} — Nível **{nivel}** | {xp} XP")
 
-        await interaction.response.send_message(view=_painel_ranking(linhas))
+        embed = discord.Embed(
+            title="Top 5 — Ranking de Níveis",
+            description="\n".join(linhas),
+            color=visual.WARNING,
+        )
+        embed.set_footer(text=visual.FOOTER)
+        await interaction.response.send_message(embed=embed)
 
     # ─── /setxp (admin) ───
     @app_commands.command(name="setxp", description="[admin] define o XP total de um membro.")

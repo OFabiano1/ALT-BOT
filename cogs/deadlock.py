@@ -15,7 +15,6 @@ from discord.ext import commands
 import data
 import deadlock_api
 import deadlock_card
-import painel
 import visual
 from cogs import daily
 
@@ -30,34 +29,18 @@ _TOKENS_7D = {"7d", "7dias", "7-dias", "semana", "week"}
 _TOKENS_1D = {"1d", "1dia", "1-dia", "dia", "hoje", "today"}
 
 
-def _painel_vinculo(botao: bool = True) -> discord.ui.LayoutView:
+def _embed_vinculo() -> discord.Embed:
     # sem vínculo nao tem rank nem stats: pede pra vincular e explica.
-    botoes = [_botao_vincular()] if botao else []
-    return painel.montar(
-        f"{visual.DEADLOCK} vincule sua conta do deadlock",
-        linhas=[
-            "pra usar esse comando vc precisa conectar sua conta da steam.",
-            "",
-            "é rápido: usa `>vincular` com seu id, link ou nome da steam",
-            "ou aperta o botão aqui embaixo. leva menos de um minuto",
-            "e seu rank, stats e cargos passam a funcionar sozinhos.",
-        ],
-        botoes=botoes,
+    return discord.Embed(
+        title=f"{visual.DEADLOCK} vincule sua conta do deadlock",
+        description=(
+            "pra usar esse comando vc precisa conectar sua conta da steam.\n\n"
+            "é rápido: usa `>vincular` com seu id, link ou nome da steam\n"
+            "ou aperta o botão aqui embaixo. leva menos de um minuto\n"
+            "e seu rank, stats e cargos passam a funcionar sozinhos."
+        ),
+        color=visual.PRIMARY,
     )
-
-
-def _botao_vincular() -> discord.ui.Button:
-    botao = discord.ui.Button(
-        label="vincular conta",
-        style=discord.ButtonStyle.primary,
-        custom_id="deadlock:vincular",
-    )
-
-    async def abrir(interaction: discord.Interaction):
-        await interaction.response.send_modal(VincularModal())
-
-    botao.callback = abrir
-    return botao
 
 
 class VincularModal(discord.ui.Modal, title="vincular deadlock"):
@@ -102,6 +85,18 @@ class VincularModal(discord.ui.Modal, title="vincular deadlock"):
             await interaction.response.send_message(
                 "deu ruim ao vincular, tenta de novo em uns segundos.", ephemeral=True
             )
+
+
+class VincularView(discord.ui.View):
+    # botão embaixo do aviso de vínculo.
+    def __init__(self, timeout: float = 180):
+        super().__init__(timeout=timeout)
+
+    @discord.ui.button(label="vincular conta", style=discord.ButtonStyle.primary)
+    async def vincular(
+        self, interaction: discord.Interaction, _: discord.ui.Button
+    ):
+        await interaction.response.send_modal(VincularModal())
 
 
 # ─── stats ───
@@ -171,24 +166,25 @@ def _carregar_stats(account_id: int, periodo: str) -> dict:
 
 
 async def _anexar_card(
-    pacote: dict, periodo: str
-) -> tuple[discord.File | None, str | None]:
+    pacote: dict, periodo: str, embed: discord.Embed
+) -> discord.File | None:
     # tenta o card png; se falhar ou demorar, o texto segue sozinho.
     try:
         png = await asyncio.wait_for(
             asyncio.to_thread(deadlock_card.render, pacote, periodo), timeout=20
         )
         arquivo = discord.File(io.BytesIO(png), filename="deadlock_stats.png")
-        return arquivo, "attachment://deadlock_stats.png"
+        embed.set_image(url="attachment://deadlock_stats.png")
+        return arquivo
     except asyncio.TimeoutError:
         log.warning("deadlock: card demorou, vai so texto")
-        return None, None
+        return None
     except Exception:
         log.exception("deadlock: card falhou, vai so texto")
-        return None, None
+        return None
 
 
-def _painel_stats_geral(pacote: dict, imagem: str | None = None) -> discord.ui.LayoutView:
+def _embed_stats_geral(pacote: dict) -> discord.Embed:
     r = pacote["resumo"]
     linhas = [
         f"partidas: **{r['partidas']}** · vitórias: **{r['vitorias']}** · win rate: **{r['winrate']:.1f}%**",
@@ -198,74 +194,78 @@ def _painel_stats_geral(pacote: dict, imagem: str | None = None) -> discord.ui.L
     for hid, m, w in r["top"]:
         nome = pacote["heroes"].get(hid, f"heroi {hid}")
         top.append(f"{visual.deadlock_hero_emoji(nome)}{nome} — {m} partidas, {w} vitórias")
+    desc = "\n".join(linhas)
     if top:
-        linhas += ["", "**heróis principais**"] + top
+        desc += "\n\n**heróis principais**\n" + "\n".join(top)
     if not r["partidas"]:
-        linhas += ["", "sem partidas registradas na api pra essa conta."]
-    return painel.montar(
-        f"{pacote['rank_emoji']}{pacote['persona']} · {pacote['rank_txt']}",
-        linhas=linhas,
-        imagem=imagem,
+        desc += "\n\nsem partidas registradas na api pra essa conta."
+    embed = discord.Embed(
+        title=f"{pacote['rank_emoji']}{pacote['persona']} · {pacote['rank_txt']}",
+        description=desc,
+        color=visual.PRIMARY,
     )
+    embed.set_footer(text=visual.FOOTER)
+    return embed
 
 
-def _painel_stats_7d(
-    pacote: dict, periodo: str = "7d", imagem: str | None = None
-) -> discord.ui.LayoutView:
+def _embed_stats_7d(pacote: dict, periodo: str = "7d") -> discord.Embed:
     r = pacote["resumo"]
     nome_top = pacote["heroes"].get(r["heroi_top"], f"heroi {r['heroi_top']}")
     vazio = "sem partidas hoje." if periodo == "1d" else "sem partidas nos últimos 7 dias."
-    linhas = [
+    desc = (
         f"partidas concluídas: **{r['partidas']}** "
-        f"({r['vitorias']} vitórias, {r['derrotas']} derrotas)",
-        f"k / d / a: **{r['k']} / {r['d']} / {r['a']}** · kda **{r['kda']:.2f}**",
-    ]
-    if r["heroi_top_qtd"]:
-        linhas.append(f"herói mais jogado: {visual.deadlock_hero_emoji(nome_top)}{nome_top} ({r['heroi_top_qtd']} partidas)")
-    if not r["partidas"]:
-        linhas += ["", vazio]
-    return painel.montar(
-        f"{pacote['rank_emoji']}{pacote['persona']} · {pacote['rank_txt']} · {periodo}",
-        linhas=linhas,
-        imagem=imagem,
+        f"({r['vitorias']} vitórias, {r['derrotas']} derrotas)\n"
+        f"k / d / a: **{r['k']} / {r['d']} / {r['a']}** · kda **{r['kda']:.2f}**"
     )
+    if r["heroi_top_qtd"]:
+        desc += f"\nherói mais jogado: {visual.deadlock_hero_emoji(nome_top)}{nome_top} ({r['heroi_top_qtd']} partidas)"
+    if not r["partidas"]:
+        desc += f"\n\n{vazio}"
+    embed = discord.Embed(
+        title=f"{pacote['rank_emoji']}{pacote['persona']} · {pacote['rank_txt']} · {periodo}",
+        description=desc,
+        color=visual.PRIMARY,
+    )
+    embed.set_footer(text=visual.FOOTER)
+    return embed
 
 
 async def _anexar_card_rank(
-    pacote: dict, info: dict
-) -> tuple[discord.File | None, str | None]:
+    pacote: dict, info: dict, embed: discord.Embed
+) -> discord.File | None:
     # tenta o card do rank; se falhar ou demorar, o texto segue sozinho.
     try:
         png = await asyncio.wait_for(
             asyncio.to_thread(deadlock_card.render_rank, pacote, info), timeout=20
         )
         arquivo = discord.File(io.BytesIO(png), filename="deadlock_rank.png")
-        return arquivo, "attachment://deadlock_rank.png"
+        embed.set_image(url="attachment://deadlock_rank.png")
+        return arquivo
     except asyncio.TimeoutError:
         log.warning("deadlock: card de rank demorou, vai so texto")
-        return None, None
+        return None
     except Exception:
         log.exception("deadlock: card de rank falhou, vai so texto")
-        return None, None
+        return None
 
 
-def _painel_rank(
-    pacote: dict, info: dict, imagem: str | None = None
-) -> discord.ui.LayoutView:
+def _embed_rank(pacote: dict, info: dict) -> discord.Embed:
     if info.get("obscurus"):
-        linhas = ["em placement: jogue ranqueadas pra ganhar rank!"]
+        desc = "em placement: jogue ranqueadas pra ganhar rank!"
     elif info.get("topo"):
-        linhas = ["topo do eternus. sem próximo, só lenda."]
+        desc = "topo do eternus. sem próximo, só lenda."
     else:
-        linhas = [
-            f"`{info.get('atual', 0)} / 1000` pontos",
-            f"faltam **{info.get('falta', 0)}** pontos pro próximo: **{info.get('proximo_txt', '')}**",
-        ]
-    return painel.montar(
-        f"{pacote['rank_emoji']}{pacote['persona']} · {info.get('rank_txt', 'obscurus')}",
-        linhas=linhas,
-        imagem=imagem,
+        desc = (
+            f"`{info.get('atual', 0)} / 1000` pontos\n"
+            f"faltam **{info.get('falta', 0)}** pontos pro próximo: **{info.get('proximo_txt', '')}**"
+        )
+    embed = discord.Embed(
+        title=f"{pacote['rank_emoji']}{pacote['persona']} · {info.get('rank_txt', 'obscurus')}",
+        description=desc,
+        color=visual.PRIMARY,
     )
+    embed.set_footer(text=visual.FOOTER)
+    return embed
 
 
 async def _resolver_steam_do_stats(
@@ -338,11 +338,13 @@ class Deadlock(commands.Cog, name="Deadlock"):
     @commands.command(name="deadlock")
     async def deadlock(self, ctx: commands.Context):
         """hub do deadlock: vincular, stats geral, 1d e resumo semanal."""
-        await ctx.send(
-            view=painel.montar(
-                f"{visual.DEADLOCK} Deadlock", linhas=_texto_deadlock().split("\n")
-            )
+        embed = discord.Embed(
+            title=f"{visual.DEADLOCK} Deadlock",
+            description=_texto_deadlock(),
+            color=visual.PRIMARY,
         )
+        embed.set_footer(text=visual.FOOTER)
+        await ctx.send(embed=embed)
 
     # ─── /deadlock ───
     @app_commands.command(
@@ -350,11 +352,13 @@ class Deadlock(commands.Cog, name="Deadlock"):
     )
     async def deadlock_slash(self, interaction: discord.Interaction):
         """versão slash do >deadlock."""
-        await interaction.response.send_message(
-            view=painel.montar(
-                f"{visual.DEADLOCK} Deadlock", linhas=_texto_deadlock().split("\n")
-            )
+        embed = discord.Embed(
+            title=f"{visual.DEADLOCK} Deadlock",
+            description=_texto_deadlock(),
+            color=visual.PRIMARY,
         )
+        embed.set_footer(text=visual.FOOTER)
+        await interaction.response.send_message(embed=embed)
 
     # ─── >vincular ───
     @commands.command(name="vincular")
@@ -362,7 +366,7 @@ class Deadlock(commands.Cog, name="Deadlock"):
         """vincula sua steam: >vincular <id, link ou nome>."""
         texto = (steam or "").strip()
         if not texto:
-            await ctx.send(view=_painel_vinculo())
+            await ctx.send(embed=_embed_vinculo(), view=VincularView())
             return
         try:
             account_id, _ = await asyncio.to_thread(deadlock_api.resolver_steam, texto)
@@ -429,7 +433,7 @@ class Deadlock(commands.Cog, name="Deadlock"):
         )
         if account_id is None:
             if aviso == "vínculo":
-                await ctx.send(view=_painel_vinculo())
+                await ctx.send(embed=_embed_vinculo(), view=VincularView())
             else:
                 await ctx.send(aviso or "deu ruim ao resolver a conta.")
             return
@@ -444,12 +448,13 @@ class Deadlock(commands.Cog, name="Deadlock"):
             dono = await asyncio.to_thread(data.buscar_discord_por_steam, account_id)
             if dono is not None:
                 await daily.avaliar_deadlock(dono, account_id, pacote["historico"])
-        arquivo, imagem = await _anexar_card(pacote, periodo)
-        if periodo in ("7d", "1d"):
-            view = _painel_stats_7d(pacote, periodo, imagem=imagem)
-        else:
-            view = _painel_stats_geral(pacote, imagem=imagem)
-        await ctx.send(view=view, file=arquivo)
+        embed = (
+            _embed_stats_7d(pacote, periodo)
+            if periodo in ("7d", "1d")
+            else _embed_stats_geral(pacote)
+        )
+        arquivo = await _anexar_card(pacote, periodo, embed)
+        await ctx.send(embed=embed, file=arquivo)
 
     # ─── /stats ───
     @app_commands.command(name="stats", description="stats do deadlock (geral, 1 dia ou 7 dias).")
@@ -481,7 +486,9 @@ class Deadlock(commands.Cog, name="Deadlock"):
         )
         if account_id is None:
             if aviso == "vínculo":
-                await interaction.followup.send(view=_painel_vinculo())
+                await interaction.followup.send(
+                    embed=_embed_vinculo(), view=VincularView()
+                )
             else:
                 await interaction.followup.send(aviso or "deu ruim ao resolver a conta.")
             return
@@ -497,12 +504,13 @@ class Deadlock(commands.Cog, name="Deadlock"):
             dono = await asyncio.to_thread(data.buscar_discord_por_steam, account_id)
             if dono is not None:
                 await daily.avaliar_deadlock(dono, account_id, pacote["historico"])
-        arquivo, imagem = await _anexar_card(pacote, periodo)
-        if periodo in ("7d", "1d"):
-            view = _painel_stats_7d(pacote, periodo, imagem=imagem)
-        else:
-            view = _painel_stats_geral(pacote, imagem=imagem)
-        await interaction.followup.send(view=view, file=arquivo)
+        embed = (
+            _embed_stats_7d(pacote, periodo)
+            if periodo in ("7d", "1d")
+            else _embed_stats_geral(pacote)
+        )
+        arquivo = await _anexar_card(pacote, periodo, embed)
+        await interaction.followup.send(embed=embed, file=arquivo)
 
     # ─── >rank ───
     @commands.command(name="rank")
@@ -514,7 +522,7 @@ class Deadlock(commands.Cog, name="Deadlock"):
         )
         if account_id is None:
             if aviso == "vínculo":
-                await ctx.send(view=_painel_vinculo())
+                await ctx.send(embed=_embed_vinculo(), view=VincularView())
             else:
                 await ctx.send(aviso or "deu ruim ao resolver a conta.")
             return
@@ -532,8 +540,9 @@ class Deadlock(commands.Cog, name="Deadlock"):
             "rank_emoji": visual.deadlock_rank_emoji(ranks.get(int(rank.get("rank", 0) or 0), "")),
         }
         info = deadlock_api.info_rank(rank, deadlock_api.NOMES_PT)
-        arquivo, imagem = await _anexar_card_rank(pacote, info)
-        await ctx.send(view=_painel_rank(pacote, info, imagem=imagem), file=arquivo)
+        embed = _embed_rank(pacote, info)
+        arquivo = await _anexar_card_rank(pacote, info, embed)
+        await ctx.send(embed=embed, file=arquivo)
 
     # ─── /rank ───
     @app_commands.command(name="rank", description="rank do deadlock com progresso pro próximo.")
@@ -554,7 +563,9 @@ class Deadlock(commands.Cog, name="Deadlock"):
         )
         if account_id is None:
             if aviso == "vínculo":
-                await interaction.followup.send(view=_painel_vinculo())
+                await interaction.followup.send(
+                    embed=_embed_vinculo(), view=VincularView()
+                )
             else:
                 await interaction.followup.send(aviso or "deu ruim ao resolver a conta.")
             return
@@ -574,10 +585,9 @@ class Deadlock(commands.Cog, name="Deadlock"):
             "rank_emoji": visual.deadlock_rank_emoji(ranks.get(int(rank.get("rank", 0) or 0), "")),
         }
         info = deadlock_api.info_rank(rank, deadlock_api.NOMES_PT)
-        arquivo, imagem = await _anexar_card_rank(pacote, info)
-        await interaction.followup.send(
-            view=_painel_rank(pacote, info, imagem=imagem), file=arquivo
-        )
+        embed = _embed_rank(pacote, info)
+        arquivo = await _anexar_card_rank(pacote, info, embed)
+        await interaction.followup.send(embed=embed, file=arquivo)
 
 
 async def setup(bot: commands.Bot):

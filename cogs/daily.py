@@ -14,7 +14,6 @@ from discord.ext import commands, tasks
 import data
 import deadlock_api
 import discord_quests
-import painel
 import visual
 
 log = logging.getLogger("alt.daily")
@@ -83,71 +82,54 @@ async def _canal(bot: commands.Bot):
     return canal
 
 
-async def _termo_feito(interaction: discord.Interaction):
-    dia = hoje_str()
-    if await asyncio.to_thread(data.marcar_feita, interaction.user.id, dia, "termo1"):
-        await asyncio.to_thread(data.ganhar_xp, interaction.user.id, 10)
-        await interaction.response.send_message(
-            "boa! termo de hoje feito, +10xp. 🔥", ephemeral=True
-        )
-    else:
-        await interaction.response.send_message(
-            "termo de hoje ja feito. ✅", ephemeral=True
-        )
+class DiariasView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
 
-
-async def _verificar_deadlock(interaction: discord.Interaction):
-    steam = await asyncio.to_thread(data.buscar_deadlock, interaction.user.id)
-    if steam is None:
-        await interaction.response.send_message(
-            "vincula tua steam primeiro com `>vincular`!", ephemeral=True
-        )
-        return
-    await interaction.response.defer(ephemeral=True)
-    try:
-        hist = await asyncio.to_thread(deadlock_api.buscar_match_history, steam)
-    except deadlock_api.DeadlockAPIError:
-        await interaction.followup.send(
-            "api do deadlock fora do ar, tenta depois!", ephemeral=True
-        )
-        return
-    if await avaliar_deadlock(interaction.user.id, steam, hist):
-        await interaction.followup.send(
-            "achei partida tua hoje! +15xp. 🎮", ephemeral=True
-        )
-    else:
-        await interaction.followup.send(
-            "ainda nao vi partida tua hoje. joga uma! 🎮", ephemeral=True
-        )
-
-
-def _botao_termo() -> discord.ui.Button:
-    botao = discord.ui.Button(
-        label="fiz o termo",
-        emoji="✅",
-        custom_id="diarias:termo",
-        style=discord.ButtonStyle.success,
+    @discord.ui.button(
+        label="fiz o termo", emoji="✅", custom_id="diarias:termo", style=discord.ButtonStyle.success
     )
-    botao.callback = _termo_feito
-    return botao
+    async def termo(self, interaction: discord.Interaction, _: discord.ui.Button):
+        dia = hoje_str()
+        if await asyncio.to_thread(data.marcar_feita, interaction.user.id, dia, "termo1"):
+            await asyncio.to_thread(data.ganhar_xp, interaction.user.id, 10)
+            await interaction.response.send_message(
+                "boa! termo de hoje feito, +10xp. 🔥", ephemeral=True
+            )
+        else:
+            await interaction.response.send_message(
+                "termo de hoje ja feito. ✅", ephemeral=True
+            )
 
-
-def _botao_verificar() -> discord.ui.Button:
-    botao = discord.ui.Button(
+    @discord.ui.button(
         label="verificar deadlock",
         emoji="🔄",
         custom_id="diarias:verificar",
         style=discord.ButtonStyle.primary,
     )
-    botao.callback = _verificar_deadlock
-    return botao
-
-
-class DiariasView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-        self.add_item(_botao_termo())
-        self.add_item(_botao_verificar())
+    async def verificar(self, interaction: discord.Interaction, _: discord.ui.Button):
+        steam = await asyncio.to_thread(data.buscar_deadlock, interaction.user.id)
+        if steam is None:
+            await interaction.response.send_message(
+                "vincula tua steam primeiro com `>vincular`!", ephemeral=True
+            )
+            return
+        await interaction.response.defer(ephemeral=True)
+        try:
+            hist = await asyncio.to_thread(deadlock_api.buscar_match_history, steam)
+        except deadlock_api.DeadlockAPIError:
+            await interaction.followup.send(
+                "api do deadlock fora do ar, tenta depois!", ephemeral=True
+            )
+            return
+        if await avaliar_deadlock(interaction.user.id, steam, hist):
+            await interaction.followup.send(
+                "achei partida tua hoje! +15xp. 🎮", ephemeral=True
+            )
+        else:
+            await interaction.followup.send(
+                "ainda nao vi partida tua hoje. joga uma! 🎮", ephemeral=True
+            )
 
 
 def _linhas_quests_discord() -> str:
@@ -171,6 +153,19 @@ def _linhas_quests_discord() -> str:
     if not linhas:
         return ""
     return "🎯 **quests do discord:**\n" + "\n".join(linhas)
+
+
+def _texto_digest(secao_quests: str = "") -> str:
+    texto = (
+        "🌅 **bom dia! diárias de hoje:**\n\n"
+        f"🧩 termo do dia — {TERMO_URL}\n"
+        "🎮 deadlock — joga **1 partida** (verifico sozinho)\n"
+        "💬 manda **10 mensagens** por aqui\n"
+        "fecha as 3 e mantém tua streak 🔥 — `>quests` pra ver"
+    )
+    if secao_quests:
+        texto += f"\n\n{secao_quests}"
+    return texto
 
 
 class Diarias(commands.Cog, name="Diárias"):
@@ -217,21 +212,7 @@ class Diarias(commands.Cog, name="Diárias"):
         dia = hoje_str()
         try:
             secao = await asyncio.to_thread(_linhas_quests_discord)
-            linhas = [
-                f"🧩 termo do dia — {TERMO_URL}",
-                "🎮 deadlock — joga **1 partida** (verifico sozinho)",
-                "💬 manda **10 mensagens** por aqui",
-                "fecha as 3 e mantém tua streak 🔥 — `>quests` pra ver",
-            ]
-            if secao:
-                linhas += ["", secao]
-            msg = await canal.send(
-                view=painel.montar(
-                    "🌅 bom dia! diárias de hoje:",
-                    linhas=linhas,
-                    botoes=[_botao_termo(), _botao_verificar()],
-                )
-            )
+            msg = await canal.send(_texto_digest(secao), view=DiariasView())
             await asyncio.to_thread(data.salvar_digest, dia, canal.id, msg.id)
             log.info("diarias: digest postado")
         except Exception:
@@ -311,14 +292,14 @@ class Diarias(commands.Cog, name="Diárias"):
         for q in QUESTS:
             marca = "✅" if q["id"] in feitas else "⬜"
             linhas.append(f"{marca} {q['nome']} — +{q['xp']}xp")
-        await ctx.send(
-            view=painel.montar(
-                f"Diárias de {membro.display_name} 🔥 {dias}",
-                linhas=linhas,
-                avatar=membro.display_avatar.url,
-                botoes=[_botao_termo(), _botao_verificar()],
-            )
+        embed = discord.Embed(
+            title=f"Diárias de {membro.display_name} 🔥 {dias}",
+            description="\n".join(linhas),
+            color=visual.PRIMARY,
         )
+        embed.set_thumbnail(url=membro.display_avatar.url)
+        embed.set_footer(text=visual.FOOTER)
+        await ctx.send(embed=embed, view=DiariasView())
 
     # ─── /quests ───
     @app_commands.command(name="quests", description="veja as diárias de hoje e tua streak.")
@@ -335,14 +316,14 @@ class Diarias(commands.Cog, name="Diárias"):
         for q in QUESTS:
             marca = "✅" if q["id"] in feitas else "⬜"
             linhas.append(f"{marca} {q['nome']} — +{q['xp']}xp")
-        await interaction.response.send_message(
-            view=painel.montar(
-                f"Diárias de {membro.display_name} 🔥 {dias}",
-                linhas=linhas,
-                avatar=membro.display_avatar.url,
-                botoes=[_botao_termo(), _botao_verificar()],
-            )
+        embed = discord.Embed(
+            title=f"Diárias de {membro.display_name} 🔥 {dias}",
+            description="\n".join(linhas),
+            color=visual.PRIMARY,
         )
+        embed.set_thumbnail(url=membro.display_avatar.url)
+        embed.set_footer(text=visual.FOOTER)
+        await interaction.response.send_message(embed=embed, view=DiariasView())
 
     def cog_unload(self):
         for loop in (self.digest_00, self.apaga_2359, self.varredura_2330):

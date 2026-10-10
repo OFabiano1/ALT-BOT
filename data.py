@@ -135,6 +135,11 @@ CREATE TABLE IF NOT EXISTS contadores (
     valor   INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (user_id, dia, chave)
 );
+
+CREATE TABLE IF NOT EXISTS doces (
+    user_id INTEGER PRIMARY KEY,
+    doces   INTEGER NOT NULL DEFAULT 0
+);
 """
 
 
@@ -755,6 +760,42 @@ def listar_destinos() -> list[tuple[str, int]]:
             "SELECT repo, channel_id FROM github_destinos ORDER BY repo"
         ).fetchall()
     return [(r["repo"], r["channel_id"]) for r in rows]
+
+
+# ─── doces de halloween ───
+def buscar_doces(user_id: int) -> int:
+    """total de doces do usuario."""
+    with _lock, _conectar() as conn:
+        row = conn.execute(
+            "SELECT doces FROM doces WHERE user_id = ?", (user_id,)
+        ).fetchone()
+    return row["doces"] if row else 0
+
+
+def ganhar_doces(user_id: int, qtd: int) -> int:
+    """soma doces. retorna o total."""
+    with _lock, _conectar() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute(
+            "INSERT INTO doces (user_id, doces) VALUES (?, ?) "
+            "ON CONFLICT(user_id) DO UPDATE SET doces = doces + ?",
+            (user_id, qtd, qtd),
+        )
+        row = conn.execute(
+            "SELECT doces FROM doces WHERE user_id = ?", (user_id,)
+        ).fetchone()
+        return row["doces"]
+
+
+def top_doces(limite: int = 5) -> list[tuple[int, int]]:
+    """top N por doces. retorna [(user_id, doces)]."""
+    with _lock, _conectar() as conn:
+        rows = conn.execute(
+            "SELECT user_id, doces FROM doces "
+            "WHERE doces > 0 ORDER BY doces DESC LIMIT ?",
+            (limite,),
+        ).fetchall()
+    return [(r["user_id"], r["doces"]) for r in rows]
 
 
 # ─── migração ───

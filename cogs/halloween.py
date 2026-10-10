@@ -3,9 +3,11 @@
 # (`bot.http.edit_voice_channel_status`, o discord.py nao tem wrapper).
 # se o status falhar, loga e segue — a msg do dia continua saindo.
 
+import asyncio
 import datetime
 import logging
 import os
+import random
 
 import discord
 from discord import app_commands
@@ -54,11 +56,18 @@ def texto_mensagem(dias: int) -> str:
     return f"🎃 {visual.AXOLOTL} faltam **{dias} dias** pro halloween! 💚"
 
 
+# doce por msg (min, max) + cooldown igual o do xp.
+DOCE_MIN = 1
+DOCE_MAX = 3
+DOCE_COOLDOWN = 60  # segundos
+
+
 class Halloween(commands.Cog, name="Halloween"):
     """mensagem diária + status da call com o countdown."""
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+        self.cooldown: dict[int, float] = {}
         if not TEXT_CHANNEL_ID or not VOICE_CHANNEL_ID:
             log.warning(
                 "HALLOWEEN_TEXT/VOICE_CHANNEL_ID nao definidos — countdown inativo"
@@ -151,6 +160,84 @@ class Halloween(commands.Cog, name="Halloween"):
                 "confere se eu tenho a permissão **Voice Channel Status** na call.",
                 ephemeral=True,
             )
+
+    # ─── doces por msg ───
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message):
+        if message.author.bot:
+            return
+        agora = discord.utils.utcnow().timestamp()
+        if agora - self.cooldown.get(message.author.id, 0) < DOCE_COOLDOWN:
+            return
+        self.cooldown[message.author.id] = agora
+        await asyncio.to_thread(
+            data.ganhar_doces, message.author.id, random.randint(DOCE_MIN, DOCE_MAX)
+        )
+
+    # ─── >doces ───
+    @commands.command(name="doces")
+    async def doces(self, ctx: commands.Context, membro: discord.Member = None):
+        """veja seus doces de halloween 🍬."""
+        membro = membro or ctx.author
+        total = await asyncio.to_thread(data.buscar_doces, membro.id)
+        await ctx.send(f"🍬 {membro.display_name} tem **{total}** doces!")
+
+    # ─── /doces ───
+    @app_commands.command(name="doces", description="veja seus doces de halloween 🍬.")
+    @app_commands.describe(membro="ver os doces de outro membro (opcional)")
+    async def doces_slash(
+        self, interaction: discord.Interaction, membro: discord.Member | None = None
+    ):
+        """versão slash do >doces."""
+        membro = membro or interaction.user
+        total = await asyncio.to_thread(data.buscar_doces, membro.id)
+        await interaction.response.send_message(
+            f"🍬 {membro.display_name} tem **{total}** doces!"
+        )
+
+    # ─── >topdoces ───
+    @commands.command(name="topdoces")
+    async def topdoces(self, ctx: commands.Context):
+        """ranking dos top 5 colecionadores de doces."""
+        ranking = await asyncio.to_thread(data.top_doces, 5)
+        if not ranking:
+            await ctx.send("🍬 ninguém pegou doce ainda! Mandem msg no chat!")
+            return
+        linhas = []
+        for i, (user_id, doces) in enumerate(ranking, start=1):
+            membro = ctx.guild.get_member(user_id)
+            nome = membro.display_name if membro else f"Usuário {user_id}"
+            linhas.append(f"**{i}.** {nome} — **{doces}** 🍬")
+        embed = discord.Embed(
+            title="🍬 Top 5 — Doces de Halloween",
+            description="\n".join(linhas),
+            color=visual.PRIMARY,
+        )
+        embed.set_footer(text=visual.FOOTER)
+        await ctx.send(embed=embed)
+
+    # ─── /topdoces ───
+    @app_commands.command(name="topdoces", description="ranking dos top 5 colecionadores de doces.")
+    async def topdoces_slash(self, interaction: discord.Interaction):
+        """versão slash do >topdoces."""
+        ranking = await asyncio.to_thread(data.top_doces, 5)
+        if not ranking:
+            await interaction.response.send_message(
+                "🍬 ninguém pegou doce ainda! Mandem msg no chat!", ephemeral=True
+            )
+            return
+        linhas = []
+        for i, (user_id, doces) in enumerate(ranking, start=1):
+            membro = interaction.guild.get_member(user_id) if interaction.guild else None
+            nome = membro.display_name if membro else f"Usuário {user_id}"
+            linhas.append(f"**{i}.** {nome} — **{doces}** 🍬")
+        embed = discord.Embed(
+            title="🍬 Top 5 — Doces de Halloween",
+            description="\n".join(linhas),
+            color=visual.PRIMARY,
+        )
+        embed.set_footer(text=visual.FOOTER)
+        await interaction.response.send_message(embed=embed)
 
     def cog_unload(self):
         if self.countdown.is_running():

@@ -1,5 +1,6 @@
 import discord
 from discord import app_commands
+from discord.components import MediaGalleryItem
 from discord.ext import commands
 from dotenv import load_dotenv
 
@@ -280,88 +281,73 @@ def _linhas_ajuda(travas: dict[str, str]) -> list[tuple[str, list[str]]]:
     return secoes
 
 
-def _embed_ajuda(secoes: list[tuple[str, list[str]]]) -> discord.Embed:
-    """monta o embed da ajuda. Usado pelo `>` e pelo `/`."""
-    embed = discord.Embed(
-        title=f"{visual.AXOLOTL} Comandos do ALT",
-        description="funciono com `>` e com `/` — usa o que preferir.",
-        color=visual.PRIMARY,
+def _texto_resumo() -> str:
+    return (
+        f"**{visual.AXOLOTL} Comandos do ALT**\n"
+        "funciono com `>` e com `/` — usa o que preferir.\n"
+        "escolhe uma categoria aqui embaixo.\n"
+        f"{visual.FOOTER}"
     )
-    for titulo, linhas in secoes:
-        embed.add_field(name=titulo, value="\n".join(linhas), inline=False)
-    if AJUDA_BANNER_URL:
-        embed.set_image(url=AJUDA_BANNER_URL)
-    embed.set_footer(text=visual.FOOTER)
-    return embed
 
 
-def _embed_ajuda_resumo() -> discord.Embed:
-    """capa da ajuda: banner + botoes por categoria."""
-    embed = discord.Embed(
-        title=f"{visual.AXOLOTL} Comandos do ALT",
-        description=(
-            "funciono com `>` e com `/` — usa o que preferir.\n"
-            "escolhe uma categoria aqui embaixo."
-        ),
-        color=visual.PRIMARY,
-    )
-    if AJUDA_BANNER_URL:
-        embed.set_image(url=AJUDA_BANNER_URL)
-    embed.set_footer(text=visual.FOOTER)
-    return embed
-
-
-def _embed_ajuda_secao(titulo: str, linhas: list[str]) -> discord.Embed:
-    """uma categoria so: titulo + comandos + banner."""
+def _texto_secao(titulo: str, linhas: list[str]) -> str:
     emoji = CATEGORIA_EMOJIS.get(titulo, "")
     nome = f"{emoji} {titulo}".strip()
-    embed = discord.Embed(
-        title=f"{visual.AXOLOTL} {nome}",
-        description="\n".join(linhas),
-        color=visual.PRIMARY,
-    )
+    return f"**{visual.AXOLOTL} {nome}**\n" + "\n".join(linhas) + f"\n{visual.FOOTER}"
+
+
+def _texto_tudo(secoes: list[tuple[str, list[str]]]) -> list[str]:
+    return [
+        f"**{titulo}**\n" + "\n".join(linhas) + f"\n{visual.FOOTER}"
+        for titulo, linhas in secoes
+    ]
+
+
+def _galeria() -> discord.ui.MediaGallery | None:
     if AJUDA_BANNER_URL:
-        embed.set_image(url=AJUDA_BANNER_URL)
-    embed.set_footer(text=visual.FOOTER)
-    return embed
+        return discord.ui.MediaGallery(MediaGalleryItem(media=AJUDA_BANNER_URL))
+    return None
 
 
-class AjudaView(discord.ui.View):
-    """botoes por categoria da ajuda. expira em 3min."""
+class AjudaLayout(discord.ui.LayoutView):
+    """ajuda em container roxo. expira em 3min."""
 
-    def __init__(self, secoes: list[tuple[str, list[str]]]):
+    def __init__(self, secoes: list[tuple[str, list[str]]], estado: tuple = ("resumo",)):
         super().__init__(timeout=180)
+        self._secoes = secoes
         self._mapa = dict(secoes)
-        for titulo, _linhas in secoes:
-            self.add_item(self._botao_categoria(titulo))
-        tudo = discord.ui.Button(
-            label="tudo",
-            emoji="📋",
-            style=discord.ButtonStyle.primary,
-            custom_id="ajuda:tudo",
-        )
+        if estado[0] == "tudo":
+            textos = _texto_tudo(secoes)
+        elif estado[0] == "secao":
+            textos = [_texto_secao(estado[1], self._mapa[estado[1]])]
+        else:
+            textos = [_texto_resumo()]
+        filhos: list = [discord.ui.TextDisplay(t) for t in textos]
+        galeria = _galeria()
+        if galeria is not None:
+            filhos.append(galeria)
+        botoes = [self._botao_categoria(t) for t, _ in secoes]
+        botoes.append(self._botao_tudo())
+        botoes.append(self._botao_inicio())
+        for i in range(0, len(botoes), 5):
+            linha = discord.ui.ActionRow()
+            for b in botoes[i : i + 5]:
+                linha.add_item(b)
+            filhos.append(linha)
+        container = discord.ui.Container(*filhos, accent_colour=visual.PRIMARY)
+        self.add_item(container)
 
-        async def mostrar_tudo(interaction: discord.Interaction):
-            await interaction.response.edit_message(
-                embed=_embed_ajuda(list(self._mapa.items())), view=self
-            )
+    @classmethod
+    def resumo(cls, secoes):
+        return cls(secoes, ("resumo",))
 
-        tudo.callback = mostrar_tudo
-        self.add_item(tudo)
-        inicio = discord.ui.Button(
-            label="início",
-            emoji="🏠",
-            style=discord.ButtonStyle.secondary,
-            custom_id="ajuda:inicio",
-        )
+    @classmethod
+    def secao(cls, secoes, titulo):
+        return cls(secoes, ("secao", titulo))
 
-        async def voltar(interaction: discord.Interaction):
-            await interaction.response.edit_message(
-                embed=_embed_ajuda_resumo(), view=self
-            )
-
-        inicio.callback = voltar
-        self.add_item(inicio)
+    @classmethod
+    def tudo(cls, secoes):
+        return cls(secoes, ("tudo",))
 
     def _botao_categoria(self, titulo: str) -> discord.ui.Button:
         botao = discord.ui.Button(
@@ -373,11 +359,39 @@ class AjudaView(discord.ui.View):
 
         async def mostrar(interaction: discord.Interaction, alvo=titulo):
             await interaction.response.edit_message(
-                embed=_embed_ajuda_secao(alvo, self._mapa[alvo]), view=self
+                view=AjudaLayout.secao(self._secoes, alvo)
             )
 
         botao.callback = mostrar
         return botao
+
+    def _botao_tudo(self) -> discord.ui.Button:
+        tudo = discord.ui.Button(
+            label="tudo",
+            emoji="📋",
+            style=discord.ButtonStyle.primary,
+            custom_id="ajuda:tudo",
+        )
+
+        async def mostrar_tudo(interaction: discord.Interaction):
+            await interaction.response.edit_message(view=AjudaLayout.tudo(self._secoes))
+
+        tudo.callback = mostrar_tudo
+        return tudo
+
+    def _botao_inicio(self) -> discord.ui.Button:
+        inicio = discord.ui.Button(
+            label="início",
+            emoji="🏠",
+            style=discord.ButtonStyle.secondary,
+            custom_id="ajuda:inicio",
+        )
+
+        async def voltar(interaction: discord.Interaction):
+            await interaction.response.edit_message(view=AjudaLayout.resumo(self._secoes))
+
+        inicio.callback = voltar
+        return inicio
 
 
 @bot.command(name="ajuda")
@@ -408,7 +422,7 @@ async def ajuda(ctx):
             trava = await permissao(cmd) if cmd else ""
             if trava:
                 travas[f">{nome}"] = trava
-    await ctx.send(embed=_embed_ajuda_resumo(), view=AjudaView(_linhas_ajuda(travas)))
+    await ctx.send(view=AjudaLayout.resumo(_linhas_ajuda(travas)))
 
 
 @bot.tree.command(name="ajuda", description="mostra todos os comandos do bot.")
@@ -430,8 +444,7 @@ async def ajuda_slash(interaction: discord.Interaction):
                 travas[f"/{cmd.name}"] = "restrito"
                 break
     await interaction.response.send_message(
-        embed=_embed_ajuda_resumo(),
-        view=AjudaView(_linhas_ajuda(travas)),
+        view=AjudaLayout.resumo(_linhas_ajuda(travas)),
         ephemeral=True,
     )
 

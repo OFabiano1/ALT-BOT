@@ -15,6 +15,7 @@ from discord.ext import commands
 
 import visual
 import data
+import painel
 
 log = logging.getLogger("alt.mudae")
 
@@ -233,13 +234,13 @@ class Mudae(commands.Cog, name="Mudae"):
                 except Exception:
                     canal = None
             if canal is not None:
-                embed = discord.Embed(
-                    title=f"{visual.AXOLOTL} rolls de volta!",
-                    description=f"<@{user_id}> seus rolls do Mudae voltaram!",
-                    color=visual.SECONDARY,
+                await canal.send(
+                    view=painel.montar(
+                        f"{visual.AXOLOTL} rolls de volta!",
+                        linhas=[f"<@{user_id}> seus rolls do Mudae voltaram!"],
+                        accent=visual.SECONDARY,
+                    )
                 )
-                embed.set_footer(text=visual.FOOTER)
-                await canal.send(embed=embed)
             else:
                 log.warning("mudae: canal %d sumiu, dropando reminder %d", channel_id, user_id)
         except asyncio.CancelledError:

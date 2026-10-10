@@ -8,6 +8,7 @@ from discord.ext import commands
 
 import visual
 import data
+import painel
 
 # ─── ganhos ───
 DAILY_DIAMANTES = 100
@@ -59,19 +60,55 @@ def _sortear_axolotl() -> str:
     return random.choices(ids, weights=pesos, k=1)[0]
 
 
-def _embed_saldo(membro: discord.Member, dima: int, amet: int, aura_id: str | None, total_axo: int) -> discord.Embed:
+def _painel_saldo(membro: discord.Member, dima: int, amet: int, aura_id: str | None, total_axo: int):
     aura_nome = AURAS[aura_id]["nome"] if aura_id in AURAS else "nenhuma"
-    embed = discord.Embed(
-        title=f"{visual.AXOLOTL} saldo de {membro.display_name}",
-        color=visual.PRIMARY,
+    return painel.montar(
+        f"{visual.AXOLOTL} saldo de {membro.display_name}",
+        campos=[
+            (f"{visual.DIAMANTE} diamantes", str(dima)),
+            (f"{visual.AMETHYST} ametista", str(amet)),
+            ("aura", aura_nome),
+            (f"{visual.AXOLOTL} axolotls", str(total_axo)),
+        ],
+        avatar=membro.display_avatar.url,
     )
-    embed.add_field(name=f"{visual.DIAMANTE} diamantes", value=str(dima), inline=True)
-    embed.add_field(name=f"{visual.AMETHYST} ametista", value=str(amet), inline=True)
-    embed.add_field(name="aura", value=aura_nome, inline=True)
-    embed.add_field(name=f"{visual.AXOLOTL} axolotls", value=str(total_axo), inline=True)
-    embed.set_thumbnail(url=membro.display_avatar.url)
-    embed.set_footer(text=visual.FOOTER)
-    return embed
+
+
+def _painel_loja(dima: int, amet: int, aura: str | None, minhas: set, roll_cmd: str, rodape: str):
+    linhas = []
+    for aid, info in AURAS.items():
+        dono = "(sua)" if aid in minhas else ""
+        equip = " (equipada)" if aura == aid else ""
+        linhas.append(
+            f"`{aid}` — **{info['nome']}** — **{info['preco']}** {visual.AMETHYST} {dono}{equip}\n└ {info['desc']}"
+        )
+    return painel.montar(
+        f"{visual.AXOLOTL} loja do lago",
+        linhas=linhas,
+        campos=[
+            (
+                f"{visual.AXOLOTL} giro de axolotl",
+                f"`{roll_cmd}` — **{ROLL_CUSTO}** {visual.AMETHYST} por giro. sorteia 1 dos 7 axolotls.",
+            ),
+            (
+                "seu saldo",
+                f"**{dima}** {visual.DIAMANTE} • **{amet}** {visual.AMETHYST}",
+            ),
+        ],
+        rodape=rodape,
+    )
+
+
+def _painel_colecao(membro: discord.Member, itens: list) -> discord.ui.LayoutView:
+    linhas = []
+    for aid, qtd in itens:
+        info = AXOLOTLS.get(aid, {"nome": aid, "rar": "?"})
+        linhas.append(f"• **{info['nome']}** ({info['rar']}) — **{qtd}x**")
+    return painel.montar(
+        f"{visual.AXOLOTL} coleção de {membro.display_name}",
+        linhas=linhas,
+        rodape=f"{len(itens)}/{len(AXOLOTLS)} espécies • {visual.FOOTER}",
+    )
 
 
 class Economia(commands.Cog, name="Economia"):
@@ -104,7 +141,7 @@ class Economia(commands.Cog, name="Economia"):
             asyncio.to_thread(data.buscar_colecao, membro.id),
         )
         total = sum(q for _, q in colecao)
-        await ctx.send(embed=_embed_saldo(membro, dima, amet, aura, total))
+        await ctx.send(view=_painel_saldo(membro, dima, amet, aura, total))
 
     @app_commands.command(name="saldo", description="veja seus diamantes, ametista, aura e coleção.")
     async def saldo_slash(self, interaction: discord.Interaction):
@@ -116,7 +153,7 @@ class Economia(commands.Cog, name="Economia"):
         total = sum(q for _, q in colecao)
         membro = interaction.user
         await interaction.response.send_message(
-            embed=_embed_saldo(membro, dima, amet, aura, total)
+            view=_painel_saldo(membro, dima, amet, aura, total)
         )
 
     # ─── >daily / /daily ───
@@ -211,30 +248,16 @@ class Economia(commands.Cog, name="Economia"):
             asyncio.to_thread(data.auras_usuario, ctx.author.id),
         )
         minhas = set(minhas)
-        linhas = []
-        for aid, info in AURAS.items():
-            dono = "(sua)" if aid in minhas else ""
-            equip = " (equipada)" if aura == aid else ""
-            linhas.append(
-                f"`{aid}` — **{info['nome']}** — **{info['preco']}** {visual.AMETHYST} {dono}{equip}\n└ {info['desc']}"
+        await ctx.send(
+            view=_painel_loja(
+                dima,
+                amet,
+                aura,
+                minhas,
+                ">roll",
+                f">buy <id> compra aura • >aura <id> equipa • {visual.FOOTER}",
             )
-        embed = discord.Embed(
-            title=f"{visual.AXOLOTL} loja do lago",
-            description="\n\n".join(linhas),
-            color=visual.PRIMARY,
         )
-        embed.add_field(
-            name=f"{visual.AXOLOTL} giro de axolotl",
-            value=f"`>roll` — **{ROLL_CUSTO}** {visual.AMETHYST} por giro. sorteia 1 dos 7 axolotls.",
-            inline=False,
-        )
-        embed.add_field(
-            name="seu saldo",
-            value=f"**{dima}** {visual.DIAMANTE} • **{amet}** {visual.AMETHYST}",
-            inline=False,
-        )
-        embed.set_footer(text=f">buy <id> compra aura • >aura <id> equipa • {visual.FOOTER}")
-        await ctx.send(embed=embed)
 
     # ─── >buy ───
     @commands.command(name="buy")
@@ -310,16 +333,16 @@ class Economia(commands.Cog, name="Economia"):
         sorteado = _sortear_axolotl()
         qtd = await asyncio.to_thread(data.adicionar_axolotl, ctx.author.id, sorteado)
         info = AXOLOTLS[sorteado]
-        embed = discord.Embed(
-            title=f"{visual.AXOLOTL} {info['nome']}!",
-            description=(
-                f"{ctx.author.mention} tirou um **{info['nome']}** ({info['rar']})!\n"
-                f"você tem **{qtd}x** esse."
-            ),
-            color=COR_RAR.get(info["rar"], visual.PRIMARY),
+        await ctx.send(
+            view=painel.montar(
+                f"{visual.AXOLOTL} {info['nome']}!",
+                linhas=[
+                    f"{ctx.author.mention} tirou um **{info['nome']}** ({info['rar']})!",
+                    f"você tem **{qtd}x** esse.",
+                ],
+                accent=COR_RAR.get(info["rar"], visual.PRIMARY),
+            )
         )
-        embed.set_footer(text=visual.FOOTER)
-        await ctx.send(embed=embed)
 
     @app_commands.command(name="roll", description="gire 5 ametista e tire um axolotl aleatório.")
     async def roll_slash(self, interaction: discord.Interaction):
@@ -334,13 +357,15 @@ class Economia(commands.Cog, name="Economia"):
         sorteado = _sortear_axolotl()
         qtd = await asyncio.to_thread(data.adicionar_axolotl, interaction.user.id, sorteado)
         info = AXOLOTLS[sorteado]
-        embed = discord.Embed(
-            title=f"{visual.AXOLOTL} {info['nome']}!",
-            description=f"você tirou **{info['nome']}** ({info['rar']})! você tem **{qtd}x**.",
-            color=COR_RAR.get(info["rar"], visual.PRIMARY),
+        await interaction.response.send_message(
+            view=painel.montar(
+                f"{visual.AXOLOTL} {info['nome']}!",
+                linhas=[
+                    f"você tirou **{info['nome']}** ({info['rar']})! você tem **{qtd}x**."
+                ],
+                accent=COR_RAR.get(info["rar"], visual.PRIMARY),
+            )
         )
-        embed.set_footer(text=visual.FOOTER)
-        await interaction.response.send_message(embed=embed)
 
     # ─── >colecao ───
     @commands.command(name="colecao")
@@ -353,17 +378,7 @@ class Economia(commands.Cog, name="Economia"):
                 f"{visual.AXOLOTL} {membro.display_name} ainda não tem axolotls! use `>roll`."
             )
             return
-        linhas = []
-        for aid, qtd in itens:
-            info = AXOLOTLS.get(aid, {"nome": aid, "rar": "?"})
-            linhas.append(f"• **{info['nome']}** ({info['rar']}) — **{qtd}x**")
-        embed = discord.Embed(
-            title=f"{visual.AXOLOTL} coleção de {membro.display_name}",
-            description="\n".join(linhas),
-            color=visual.PRIMARY,
-        )
-        embed.set_footer(text=f"{len(itens)}/{len(AXOLOTLS)} espécies • {visual.FOOTER}")
-        await ctx.send(embed=embed)
+        await ctx.send(view=_painel_colecao(membro, itens))
 
     # ─── >topdima ───
     @commands.command(name="topdima")
@@ -379,13 +394,7 @@ class Economia(commands.Cog, name="Economia"):
             membro = ctx.guild.get_member(uid) if ctx.guild else None
             nome = membro.display_name if membro else f"usuário {uid}"
             linhas.append(f"{medalhas[i]} {nome} — **{dima}** {visual.DIAMANTE}")
-        embed = discord.Embed(
-            title=f"{visual.DIAMANTE} top diamantes",
-            description="\n".join(linhas),
-            color=visual.WARNING,
-        )
-        embed.set_footer(text=visual.FOOTER)
-        await ctx.send(embed=embed)
+        await ctx.send(view=painel.montar(f"{visual.DIAMANTE} top diamantes", linhas=linhas))
 
     # ─── /pay ───
     @app_commands.command(name="pay", description="transfira diamantes pra outro membro.")
@@ -465,30 +474,17 @@ class Economia(commands.Cog, name="Economia"):
             asyncio.to_thread(data.auras_usuario, user_id),
         )
         minhas = set(minhas)
-        linhas = []
-        for aid, info in AURAS.items():
-            dono = "(sua)" if aid in minhas else ""
-            equip = " (equipada)" if aura == aid else ""
-            linhas.append(
-                f"`{aid}` — **{info['nome']}** — **{info['preco']}** {visual.AMETHYST} {dono}{equip}\n└ {info['desc']}"
-            )
-        embed = discord.Embed(
-            title=f"{visual.AXOLOTL} loja do lago",
-            description="\n\n".join(linhas),
-            color=visual.PRIMARY,
+        await interaction.response.send_message(
+            view=_painel_loja(
+                dima,
+                amet,
+                aura,
+                minhas,
+                "/roll",
+                f"/buy compra aura • /aura equipa • {visual.FOOTER}",
+            ),
+            ephemeral=True,
         )
-        embed.add_field(
-            name=f"{visual.AXOLOTL} giro de axolotl",
-            value=f"`/roll` — **{ROLL_CUSTO}** {visual.AMETHYST} por giro. sorteia 1 dos 7 axolotls.",
-            inline=False,
-        )
-        embed.add_field(
-            name="seu saldo",
-            value=f"**{dima}** {visual.DIAMANTE} • **{amet}** {visual.AMETHYST}",
-            inline=False,
-        )
-        embed.set_footer(text=f"/buy compra aura • /aura equipa • {visual.FOOTER}")
-        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     # ─── /buy ───
     @app_commands.command(name="buy", description="compra uma aura com ametista.")
@@ -572,17 +568,7 @@ class Economia(commands.Cog, name="Economia"):
                 ephemeral=True,
             )
             return
-        linhas = []
-        for aid, qtd in itens:
-            info = AXOLOTLS.get(aid, {"nome": aid, "rar": "?"})
-            linhas.append(f"• **{info['nome']}** ({info['rar']}) — **{qtd}x**")
-        embed = discord.Embed(
-            title=f"{visual.AXOLOTL} coleção de {membro.display_name}",
-            description="\n".join(linhas),
-            color=visual.PRIMARY,
-        )
-        embed.set_footer(text=f"{len(itens)}/{len(AXOLOTLS)} espécies • {visual.FOOTER}")
-        await interaction.response.send_message(embed=embed)
+        await interaction.response.send_message(view=_painel_colecao(membro, itens))
 
     # ─── /topdima ───
     @app_commands.command(name="topdima", description="ranking dos mais ricos em diamantes.")
@@ -601,13 +587,9 @@ class Economia(commands.Cog, name="Economia"):
             membro = interaction.guild.get_member(uid) if interaction.guild else None
             nome = membro.display_name if membro else f"usuário {uid}"
             linhas.append(f"{medalhas[i]} {nome} — **{dima}** {visual.DIAMANTE}")
-        embed = discord.Embed(
-            title=f"{visual.DIAMANTE} top diamantes",
-            description="\n".join(linhas),
-            color=visual.WARNING,
+        await interaction.response.send_message(
+            view=painel.montar(f"{visual.DIAMANTE} top diamantes", linhas=linhas)
         )
-        embed.set_footer(text=visual.FOOTER)
-        await interaction.response.send_message(embed=embed)
 
 
 async def setup(bot: commands.Bot):

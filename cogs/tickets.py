@@ -6,6 +6,7 @@ from discord import app_commands
 from discord.ext import commands
 
 import data
+import painel
 import visual
 
 log = logging.getLogger("alt.tickets")
@@ -85,18 +86,19 @@ async def criar_ticket(interaction: discord.Interaction, emoji: str, label: str)
         content=f"criei um ticket para você! {ticket.mention}",
     )
 
-    embed = discord.Embed(
-        title=f"{emoji} {label}",
-        description=(
-            f"{interaction.user.mention} ticket criado!\n\n"
+    view = painel.montar(
+        f"{emoji} {label}",
+        linhas=[
+            f"{interaction.user.mention} ticket criado!",
+            "",
             "envie todas as informações possíveis sobre seu caso e aguarde até que um "
-            "atendente responda.\n\n"
-            "após a sua questão ser sanada, use `>fecharticket` para encerrar o atendimento."
-        ),
-        color=visual.PRIMARY,
+            "atendente responda.",
+            "",
+            "após a sua questão ser sanada, use `>fecharticket` para encerrar o atendimento.",
+        ],
+        rodape=f"ALT • Sistema de Tickets • {visual.FOOTER}",
     )
-    embed.set_footer(text=f"ALT • Sistema de Tickets • {visual.FOOTER}")
-    await ticket.send(embed=embed)
+    await ticket.send(view=view)
 
 
 class Dropdown(discord.ui.Select):
@@ -129,12 +131,33 @@ class DropdownView(discord.ui.View):
         self.add_item(Dropdown())
 
 
+def painel_tickets(persistente: bool = False) -> discord.ui.LayoutView:
+    """painel central com o dropdown dentro. persistente sobrevive a restart."""
+    botoes = [Dropdown()]
+    return painel.montar(
+        "Central de Ajuda",
+        linhas=[
+            "Boas-vindas ao atendimento do Axolotl BR",
+            "Por aqui você pode reportar bugs de bots, realizar uma denúncia de outros "
+            "membros, parcerias (sorteios, boost e patrocínios) e adicionar bots.",
+        ],
+        imagem=TICKET_BANNER_URL or None,
+        botoes=botoes,
+        timeout=None if persistente else 180,
+        rodape=(
+            "© 2020 – 2026 Axolotl BR. Todos os direitos reservados.\n\n"
+            "Para dar início ao seu atendimento, selecione uma das opções abaixo."
+        ),
+    )
+
+
 class Tickets(commands.Cog, name="tickets"):
     """sistema de tickets via thread privada."""
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         bot.add_view(DropdownView())
+        bot.add_view(painel_tickets(persistente=True))
         if not _ids_configurados():
             log.warning(
                 "MOD_ROLE_ID / TICKET_CHANNEL_ID nao definidos — "
@@ -156,23 +179,7 @@ class Tickets(commands.Cog, name="tickets"):
             await ctx.send("canal de tickets não encontrado!")
             return
 
-        embed = discord.Embed(
-            title="Central de Ajuda",
-            description=(
-                "Boas-vindas ao atendimento do Axolotl BR\n"
-                "Por aqui você pode reportar bugs de bots, realizar uma denúncia de outros "
-                "membros, parcerias (sorteios, boost e patrocínios) e adicionar bots."
-            ),
-            color=visual.PRIMARY,
-        )
-        if TICKET_BANNER_URL:
-            embed.set_image(url=TICKET_BANNER_URL)
-        embed.set_footer(text=(
-            f"© 2020 – 2026 Axolotl BR. Todos os direitos reservados.\n\n"
-            "Para dar início ao seu atendimento, selecione uma das opções abaixo."
-        ))
-
-        await canal.send(embed=embed, view=DropdownView())
+        await canal.send(view=painel_tickets())
         await ctx.send("embed de tickets enviado!", delete_after=5)
 
     # ─── >fecharticket ───
@@ -223,23 +230,7 @@ class Tickets(commands.Cog, name="tickets"):
             )
             return
 
-        embed = discord.Embed(
-            title="Central de Ajuda",
-            description=(
-                "Boas-vindas ao atendimento do Axolotl BR\n"
-                "Por aqui você pode reportar bugs de bots, realizar uma denúncia de outros "
-                "membros, parcerias (sorteios, boost e patrocínios) e adicionar bots."
-            ),
-            color=visual.PRIMARY,
-        )
-        if TICKET_BANNER_URL:
-            embed.set_image(url=TICKET_BANNER_URL)
-        embed.set_footer(text=(
-            f"© 2020 – 2026 Axolotl BR. Todos os direitos reservados.\n\n"
-            "Para dar início ao seu atendimento, selecione uma das opções abaixo."
-        ))
-
-        await canal.send(embed=embed, view=DropdownView())
+        await canal.send(view=painel_tickets())
         await interaction.response.send_message("embed de tickets enviado!", ephemeral=True)
 
     # ─── /fecharticket ───

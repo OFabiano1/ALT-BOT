@@ -14,6 +14,7 @@ from discord import app_commands
 from discord.ext import commands, tasks
 
 import data
+import painel
 import visual
 
 log = logging.getLogger("alt.halloween")
@@ -80,7 +81,7 @@ class Halloween(commands.Cog, name="Halloween"):
             log.info("halloween: loop diario 00:00 iniciado")
 
     async def _enviar_mensagem(self, dias: int) -> bool:
-        """manda o embed do countdown no chat. True se enviou."""
+        """manda o painel do countdown no chat. True se enviou."""
         if not TEXT_CHANNEL_ID:
             return False
         try:
@@ -89,13 +90,15 @@ class Halloween(commands.Cog, name="Halloween"):
                 canal = await self.bot.fetch_channel(TEXT_CHANNEL_ID)
             # dia 31: verde festa. resto do ano: roxo em foco.
             festa = dias == 0
-            embed = discord.Embed(
-                title="🎃 É HOJE! feliz halloween 💚" if festa else "🎃 countdown pro halloween 💚",
-                description=texto_mensagem(dias),
-                color=visual.SUCCESS if festa else visual.PRIMARY,
+            await canal.send(
+                view=painel.montar(
+                    "🎃 É HOJE! feliz halloween 💚"
+                    if festa
+                    else "🎃 countdown pro halloween 💚",
+                    linhas=[texto_mensagem(dias)],
+                    accent=visual.SUCCESS if festa else visual.PRIMARY,
+                )
             )
-            embed.set_footer(text=visual.FOOTER)
-            await canal.send(embed=embed)
             return True
         except Exception:
             log.exception("halloween: falha ao enviar mensagem")
@@ -208,13 +211,7 @@ class Halloween(commands.Cog, name="Halloween"):
             membro = ctx.guild.get_member(user_id)
             nome = membro.display_name if membro else f"Usuário {user_id}"
             linhas.append(f"**{i}.** {nome} — **{doces}** 🍬")
-        embed = discord.Embed(
-            title="🍬 Top 5 — Doces de Halloween",
-            description="\n".join(linhas),
-            color=visual.PRIMARY,
-        )
-        embed.set_footer(text=visual.FOOTER)
-        await ctx.send(embed=embed)
+        await ctx.send(view=painel.montar("🍬 Top 5 — Doces de Halloween", linhas=linhas))
 
     # ─── /topdoces ───
     @app_commands.command(name="topdoces", description="ranking dos top 5 colecionadores de doces.")
@@ -231,13 +228,9 @@ class Halloween(commands.Cog, name="Halloween"):
             membro = interaction.guild.get_member(user_id) if interaction.guild else None
             nome = membro.display_name if membro else f"Usuário {user_id}"
             linhas.append(f"**{i}.** {nome} — **{doces}** 🍬")
-        embed = discord.Embed(
-            title="🍬 Top 5 — Doces de Halloween",
-            description="\n".join(linhas),
-            color=visual.PRIMARY,
+        await interaction.response.send_message(
+            view=painel.montar("🍬 Top 5 — Doces de Halloween", linhas=linhas)
         )
-        embed.set_footer(text=visual.FOOTER)
-        await interaction.response.send_message(embed=embed)
 
     def cog_unload(self):
         if self.countdown.is_running():

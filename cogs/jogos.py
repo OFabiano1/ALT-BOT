@@ -5,6 +5,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+import data
+import painel
 import visual
 import data
 
@@ -73,8 +75,8 @@ class Jogos(commands.Cog, name="jogos"):
         self.bot = bot
 
     # ─── lógica interna ───
-    def _resolver(self, escolha: str | None, jogador) -> discord.Embed | None:
-        """resolve a jogada e devolve o embed. None se a escolha for inválida."""
+    def _resolver(self, escolha: str | None, jogador) -> dict | None:
+        """resolve a jogada e devolve os dados. None se a escolha for inválida."""
         if escolha is None or escolha.lower() not in OPCOES:
             return None
 
@@ -83,7 +85,8 @@ class Jogos(commands.Cog, name="jogos"):
         resultado = _jogada(jogador.id, escolha, jogada_bot)
 
         return {
-            "embed": discord.Embed(title=TITULOS[resultado], color=CORES[resultado]),
+            "titulo": TITULOS[resultado],
+            "cor": CORES[resultado],
             "escolha": escolha,
             "jogada_bot": jogada_bot,
             "resultado": resultado,
@@ -91,28 +94,19 @@ class Jogos(commands.Cog, name="jogos"):
         }
 
     @staticmethod
-    def _montar_embed(dados: dict, placar: tuple[int, int, int], recompensa: int = 0) -> discord.Embed:
+    def _montar_painel(dados: dict, placar: tuple[int, int, int], recompensa: int = 0):
         v, d, e = placar
-        embed = dados["embed"]
-        embed.add_field(
-            name=f"{dados['jogador'].display_name} jogou",
-            value=f"**{dados['escolha'].capitalize()}**",
-            inline=True,
-        )
-        embed.add_field(
-            name="alt jogou",
-            value=f"**{dados['jogada_bot'].capitalize()}**",
-            inline=True,
-        )
-        embed.add_field(name="", value="", inline=True)
-        embed.add_field(
-            name=f"{visual.AXOLOTL} diz:",
-            value=random.choice(FALAS[dados["resultado"]]),
-            inline=False,
-        )
+        linhas = [
+            f"**{dados['jogador'].display_name}** jogou **{dados['escolha'].capitalize()}**",
+            f"**alt** jogou **{dados['jogada_bot'].capitalize()}**",
+            "",
+            f"{visual.AXOLOTL} diz: {random.choice(FALAS[dados['resultado']])}",
+        ]
         extra = f"  •  +{recompensa} {visual.DIAMANTE}" if recompensa else ""
-        embed.set_footer(text=f"seu placar: {v}V {d}D {e}E{extra}  •  use >placar • {visual.FOOTER}")
-        return embed
+        rodape = f"seu placar: {v}V {d}D {e}E{extra}  •  use >placar • {visual.FOOTER}"
+        return painel.montar(
+            dados["titulo"], linhas=linhas, rodape=rodape, accent=dados["cor"]
+        )
 
     # ─── >ptp ───
     @commands.command(name="ptp")
@@ -134,7 +128,7 @@ class Jogos(commands.Cog, name="jogos"):
             await asyncio.to_thread(
                 data.adicionar_diamantes, ctx.author.id, recompensa
             )
-        await ctx.send(embed=self._montar_embed(dados, placar, recompensa))
+        await ctx.send(view=self._montar_painel(dados, placar, recompensa))
 
     # ─── /ptp (slash) ───
     @app_commands.command(name="ptp", description="jogue Pedra, Tesoura e Papel contra o ALT!")
@@ -161,7 +155,7 @@ class Jogos(commands.Cog, name="jogos"):
             await asyncio.to_thread(
                 data.adicionar_diamantes, interaction.user.id, recompensa
             )
-        await interaction.response.send_message(embed=self._montar_embed(dados, placar, recompensa))
+        await interaction.response.send_message(view=self._montar_painel(dados, placar, recompensa))
 
     # ─── >placar ───
     @commands.command(name="placar")
@@ -178,16 +172,17 @@ class Jogos(commands.Cog, name="jogos"):
         total = v + d + e
         pct = round(v / total * 100)
 
-        embed = discord.Embed(
-            title=f"Placar de {ctx.author.display_name}",
-            color=visual.PRIMARY,
+        await ctx.send(
+            view=painel.montar(
+                f"Placar de {ctx.author.display_name}",
+                campos=[
+                    ("vitórias", str(v)),
+                    ("derrotas", str(d)),
+                    ("empates", str(e)),
+                    ("taxa de vitória", f"{pct}%"),
+                ],
+            )
         )
-        embed.add_field(name="vitórias", value=str(v), inline=True)
-        embed.add_field(name="derrotas", value=str(d), inline=True)
-        embed.add_field(name="empates", value=str(e), inline=True)
-        embed.add_field(name="taxa de vitória", value=f"{pct}%", inline=False)
-        embed.set_footer(text=visual.FOOTER)
-        await ctx.send(embed=embed)
 
     # ─── >rankingptp ───
     @commands.command(name="rankingptp")
@@ -206,13 +201,7 @@ class Jogos(commands.Cog, name="jogos"):
             nome = membro.display_name if membro else f"usuário {user_id}"
             linhas.append(f"{MEDALHAS[i]} **{nome}** — {v}V {d}D {e}E")
 
-        embed = discord.Embed(
-            title="Ranking — Top 5 Jogadores",
-            description="\n".join(linhas),
-            color=visual.WARNING,
-        )
-        embed.set_footer(text=visual.FOOTER)
-        await ctx.send(embed=embed)
+        await ctx.send(view=painel.montar("Ranking — Top 5 Jogadores", linhas=linhas))
 
     # ─── /placar ───
     @app_commands.command(name="placar", description="veja seu placar de Pedra, Tesoura e Papel.")
@@ -229,16 +218,17 @@ class Jogos(commands.Cog, name="jogos"):
         total = v + d + e
         pct = round(v / total * 100)
 
-        embed = discord.Embed(
-            title=f"Placar de {interaction.user.display_name}",
-            color=visual.PRIMARY,
+        await interaction.response.send_message(
+            view=painel.montar(
+                f"Placar de {interaction.user.display_name}",
+                campos=[
+                    ("vitórias", str(v)),
+                    ("derrotas", str(d)),
+                    ("empates", str(e)),
+                    ("taxa de vitória", f"{pct}%"),
+                ],
+            )
         )
-        embed.add_field(name="vitórias", value=str(v), inline=True)
-        embed.add_field(name="derrotas", value=str(d), inline=True)
-        embed.add_field(name="empates", value=str(e), inline=True)
-        embed.add_field(name="taxa de vitória", value=f"{pct}%", inline=False)
-        embed.set_footer(text=visual.FOOTER)
-        await interaction.response.send_message(embed=embed)
 
     # ─── /rankingptp ───
     @app_commands.command(name="rankingptp", description="veja o top 5 jogadores do ptp no servidor.")
@@ -258,13 +248,9 @@ class Jogos(commands.Cog, name="jogos"):
             nome = membro.display_name if membro else f"usuário {user_id}"
             linhas.append(f"{MEDALHAS[i]} **{nome}** — {v}V {d}D {e}E")
 
-        embed = discord.Embed(
-            title="Ranking — Top 5 Jogadores",
-            description="\n".join(linhas),
-            color=visual.WARNING,
+        await interaction.response.send_message(
+            view=painel.montar("Ranking — Top 5 Jogadores", linhas=linhas)
         )
-        embed.set_footer(text=visual.FOOTER)
-        await interaction.response.send_message(embed=embed)
 
 
 async def setup(bot: commands.Bot):
